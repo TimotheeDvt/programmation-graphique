@@ -5,11 +5,30 @@
 
 // cmake --build build --config Release ; .\build\Release\main.exe
 
-const char* APP_TITLE = "Introduction to Modern OpenGL : Hello window !";
+const char* APP_TITLE = "Hello Triangle";
 const int gWindowWidth = 800;
 const int gWindowHeight = 600;
 
 GLFWwindow* gWindow = NULL;
+
+const GLchar* vertexShaderSrc =
+"#version 330 core\n"
+"layout (location = 0) in vec3 pos;"
+"layout (location = 1) in vec3 color;"
+"out vec3 vert_color;"
+"void main() {"
+"       vert_color = color;"
+"       gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);" // xyzw
+"}";
+
+const GLchar* fragmentShaderSrc =
+"#version 330 core\n"
+"in vec3 vert_color;"
+"out vec4 frag_color;"
+"void main() {"
+"       frag_color = vec4(vert_color, 1.0f);" // rgba
+"}"
+;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
 void showFPS(GLFWwindow* window);
@@ -21,14 +40,96 @@ int main() {
                 return -1;
         };
 
+        GLfloat vert_pos[] = {
+                // position
+                0.0f,  0.5f, 0.0f,
+                0.5f, -0.5f, 0.0f,
+               -0.5f, -0.5f, 0.0f
+        };
+
+        GLfloat vert_color[] = {
+                1.0f, 0.0f, 0.0f,
+                0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 1.0f
+        };
+
+        GLuint vbo, vbo2, vao;
+
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vert_pos), vert_pos, GL_STATIC_DRAW);
+
+        glGenBuffers(1, &vbo2);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo2);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vert_color), vert_color, GL_STATIC_DRAW);
+
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+
+        // position
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+        glEnableVertexAttribArray(0);
+
+        // color
+        glBindBuffer(GL_ARRAY_BUFFER, vbo2);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+        glEnableVertexAttribArray(1);
+
+        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vs, 1, &vertexShaderSrc, NULL);
+        glCompileShader(vs);
+
+        GLint result;
+        GLchar infoLog[512];
+        glGetShaderiv(vs, GL_COMPILE_STATUS, &result);
+        if (!result) {
+                glGetShaderInfoLog(vs, sizeof(infoLog), NULL, infoLog);
+                std::cout << "Vertex Shader Failed to compile. " << infoLog << std::endl;
+        }
+
+        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fs, 1, &fragmentShaderSrc, NULL);
+        glCompileShader(fs);
+
+        glGetShaderiv(fs, GL_COMPILE_STATUS, &result);
+        if (!result) {
+                glGetShaderInfoLog(fs, sizeof(infoLog), NULL, infoLog);
+                std::cout << "Fragment Shader Failed to compile. " << infoLog << std::endl;
+        }
+
+        GLuint shaderProgram = glCreateProgram();
+        glAttachShader(shaderProgram, vs);
+        glAttachShader(shaderProgram, fs);
+        glLinkProgram(shaderProgram);
+
+        glGetProgramiv(shaderProgram, GL_LINK_STATUS, &result);
+        if (!result) {
+                glGetProgramInfoLog(shaderProgram, sizeof(infoLog), NULL, infoLog);
+                std::cout << "Program Linking Failed. " << infoLog << std::endl;
+        }
+
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
         while (!glfwWindowShouldClose(gWindow)) {
                 showFPS(gWindow);
                 glfwPollEvents();
 
                 glClear(GL_COLOR_BUFFER_BIT);
 
+                glUseProgram(shaderProgram);
+
+                glBindVertexArray(vao);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+                glBindVertexArray(0);
+
                 glfwSwapBuffers(gWindow);
         }
+
+        glDeleteProgram(shaderProgram);
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
 
         glfwTerminate();
         return 0;
@@ -54,6 +155,7 @@ bool initOpenGL() {
         }
 
         glfwMakeContextCurrent(gWindow);
+        glfwSwapInterval(0);  // disable vsync for better fps
 
         glfwSetKeyCallback(gWindow, glfw_onkey);
 
