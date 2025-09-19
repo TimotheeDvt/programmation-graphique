@@ -6,8 +6,6 @@
 
 #include "./shaders/ShaderProgram.h"
 
-// cmake --build build --config Release ; .\build\Release\main.exe
-
 const char* APP_TITLE = "Hello Shaders";
 const int gWindowWidth = 800;
 const int gWindowHeight = 600;
@@ -64,6 +62,15 @@ int main() {
                 glClear(GL_COLOR_BUFFER_BIT);
 
                 shaderProgram.use();
+
+                GLfloat time = (GLfloat)(glfwGetTime());
+                GLfloat blueColor = (GLfloat)((sin(time * 4) / 2) + 0.5);
+                glm::vec2 pos;
+                pos.x = sin(time) / 2;
+                pos.y = cos(time) / 2;
+
+                shaderProgram.setUniform("vertColor", glm::vec4(0.0f, 0.0f, blueColor, 1.0f));
+                shaderProgram.setUniform("posOffset", pos);
 
                 glBindVertexArray(vao);
                 glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);

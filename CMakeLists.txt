@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
+find_package(glm CONFIG REQUIRED)
 # Build executable
 add_executable(main main.cpp ./shaders/ShaderProgram.cpp)
 
@@ -22,3 +23,4 @@ set(GLEW_LIBRARY "C:/libs/glew/lib/Release/x64/glew32s.lib")
 target_include_directories(main PRIVATE ${GLEW_INCLUDE_DIR})
 target_compile_definitions(main PRIVATE GLEW_STATIC)
 target_link_libraries(main PRIVATE glfw OpenGL::GL ${GLEW_LIBRARY})
+target_link_libraries(main PRIVATE glm::glm)
