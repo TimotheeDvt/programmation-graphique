@@ -125,17 +125,25 @@ bool initOpenGL() {
 
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode) {
-        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-                glfwSetWindowShouldClose(window, GL_TRUE);
+        if (action != GLFW_PRESS) {
+                return;
         }
 
-        if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+        switch (key){
+        case GLFW_KEY_ESCAPE:
+                glfwSetWindowShouldClose(window, GL_TRUE);
+                break;
+        case GLFW_KEY_SPACE:
                 gWireframe = !gWireframe;
                 if (gWireframe) {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                 } else {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                 }
+                break;
+
+        default:
+                break;
         }
 
 }
