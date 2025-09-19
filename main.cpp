@@ -4,7 +4,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-#include "./shaders/ShaderProgram.h"
+#include "./src/ShaderProgram.h"
 
 const char* APP_TITLE = "Hello Shaders";
 const int gWindowWidth = 800;
