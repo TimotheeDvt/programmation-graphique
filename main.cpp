@@ -1,10 +1,10 @@
 #include <iostream>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <sstream>
 #include <filesystem>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
-
 #include "./src/ShaderProgram.h"
 #include "./src/Texture2D.h"
 #include "./src/Camera.h"
@@ -19,16 +19,16 @@ const std::string texture2_file = "./img/grid.png";
 
 float cubeAngle = 0.0f;
 
-OrbitCamera orbitCamera;
-float gYaw = 0.0f;
-float gPitch = 0.0f;
-float gRadius = 10.0f;
-
-const float MOUSE_SENSITIVITY = 0.25f;
+FPSCamera fpsCamera(glm::vec3(0.0f, 0.0f, 5.0f));
+const double ZOOM_SENSITIVITY = -3.0;
+const float MOVE_SPEED = 5.0; // units / sec
+const float MOUSE_SENSITIVITY = 0.1f;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
 void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height);
 void glfw_onMouseMove(GLFWwindow* window, double posX, double posY);
+void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY);
+void update(double elapsedTime);
 void showFPS(GLFWwindow* window);
 bool initOpenGL();
 
@@ -90,6 +90,7 @@ int main() {
                 1.0f, -1.0f, -1.0f, 1.0f, 0.0f,
         };
         glm::vec3 cubePos = glm::vec3(0.0f, 0.0f, -5.0f);
+        glm::vec3 floorPos = glm::vec3(0.0f, -1.0f, 0.0f);
 
         GLuint vbo, vao;
 
@@ -126,26 +127,19 @@ int main() {
                 double deltaTime = currentTime - lastTime;
 
                 glfwPollEvents();
+                update(deltaTime);
 
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
                 texture1.bind(0);
-                // texture2.bind(1);
-
-                // cubeAngle += (float)(deltaTime * 50.0f);
-                // if (cubeAngle >= 360.0) cubeAngle = 0;
 
                 glm::mat4 model(1.0), view(1.0), projection(1.0);
 
-                orbitCamera.setLookAt(cubePos);
-                orbitCamera.rotate(gYaw, gPitch);
-                orbitCamera.setRadius(gRadius);
-
                 model = glm::translate(model, cubePos);
 
-                view = orbitCamera.getViewMatrix();
+                view = fpsCamera.getViewMatrix();
 
-                const float fov = 45.0f;
+                const float fov = fpsCamera.getFOV();
                 const float aspectRatio = (float)gWindowWidth/(float)gWindowHeight;
                 projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 100.0f);
 
@@ -159,9 +153,10 @@ int main() {
                 glDrawArrays(GL_TRIANGLES, 0, 36);
 
                 texture2.bind(0);
-                glm::vec3 floorPos;
-                floorPos.y = -1.0f;
-                model = glm::translate(model, floorPos) * glm::scale(model, glm::vec3(10.0f, 0.01f, 10.0f));
+                model = glm::mat4(1.0f);
+                model = glm::translate(model, floorPos);
+                model = glm::scale(model, glm::vec3(10.0f, 0.01f, 10.0f));
+
 
                 shaderProgram.setUniform("model", model);
                 glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -204,6 +199,10 @@ bool initOpenGL() {
 
         glfwSetKeyCallback(gWindow, glfw_onkey);
         glfwSetCursorPosCallback(gWindow, glfw_onMouseMove);
+        glfwSetScrollCallback(gWindow, glfw_onMouseScroll);
+
+        glfwSetInputMode(gWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        glfwSetCursorPos(gWindow, gWindowWidth / 2.0, gWindowHeight / 2.0);
 
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK) {
@@ -226,10 +225,10 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
         }
 
         switch (key){
-        case GLFW_KEY_ESCAPE:
+                case GLFW_KEY_ESCAPE:
                 glfwSetWindowShouldClose(window, GL_TRUE);
                 break;
-        case GLFW_KEY_SPACE:
+                case GLFW_KEY_1:
                 gWireframe = !gWireframe;
                 if (gWireframe) {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -238,7 +237,7 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                 }
                 break;
 
-        default:
+                default:
                 break;
         }
 }
@@ -251,21 +250,60 @@ void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height) {
 }
 
 void glfw_onMouseMove(GLFWwindow* window, double posX, double posY) {
-        static glm::vec2 lastMousePos = glm::vec2(0, 0);
+        // static glm::vec2 lastMousePos = glm::vec2(0, 0);
 
-        if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_LEFT) == 1) {
-                gYaw -= ((float)posX - lastMousePos.x) * MOUSE_SENSITIVITY;
-                gPitch += ((float)posY - lastMousePos.y) * MOUSE_SENSITIVITY;
+        // if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_LEFT) == 1) {
+        //         gYaw -= ((float)posX - lastMousePos.x) * MOUSE_SENSITIVITY;
+        //         gPitch += ((float)posY - lastMousePos.y) * MOUSE_SENSITIVITY;
+        // }
+
+        // if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_RIGHT) == 1) {
+        //         float dx = 0.01f + ((float)posX - lastMousePos.x);
+        //         float dy = 0.01f + ((float)posY - lastMousePos.y);
+        //         gRadius += dx - dy;
+        // }
+
+        // lastMousePos.x = (float)posX;
+        // lastMousePos.y = (float)posY;
+}
+
+void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY) {
+        double fov = fpsCamera.getFOV() + deltaY * ZOOM_SENSITIVITY;
+
+        fov = glm::clamp(fov, 1.0, 120.0);
+
+        fpsCamera.setFOV((float)fov);
+}
+
+void update(double elapsedTime) {
+        double mouseX, mouseY;
+
+        glfwGetCursorPos(gWindow, &mouseX, &mouseY);
+
+        fpsCamera.rotate((float)(gWindowWidth/2.0 - mouseX) * MOUSE_SENSITIVITY, (float)(gWindowHeight/2.0 - mouseY) * MOUSE_SENSITIVITY);
+
+        glfwSetCursorPos(gWindow, gWindowWidth/2.0, gWindowHeight/2.0);
+
+        // Mouvement avant/arrière
+        if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getLook());
+        } else if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getLook());
         }
 
-        if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_RIGHT) == 1) {
-                float dx = 0.01f + ((float)posX - lastMousePos.x);
-                float dy = 0.01f + ((float)posY - lastMousePos.y);
-                gRadius += dx - dy;
+        // Mouvement gauche/droite
+        if (glfwGetKey(gWindow, GLFW_KEY_A) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getRight());
+        } else if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getRight());
         }
 
-        lastMousePos.x = (float)posX;
-        lastMousePos.y = (float)posY;
+        // Mouvement haut/bas (inchangé)
+        if (glfwGetKey(gWindow, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getUp());
+        } else if (glfwGetKey(gWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getUp());
+        }
 }
 
 
@@ -285,9 +323,9 @@ void showFPS(GLFWwindow* window) {
                 std::ostringstream outs;
                 outs.precision(3);
                 outs << std::fixed
-                        << APP_TITLE << "    "
-                        << "FPS: " << fps << "    "
-                        << "Frame Time: " << msPerFrame  << " (ms)";
+                << APP_TITLE << "    "
+                << "FPS: " << fps << "    "
+                << "Frame Time: " << msPerFrame  << " (ms)";
 
                 glfwSetWindowTitle(window, outs.str().c_str());
 
