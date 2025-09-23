@@ -13,7 +13,7 @@ find_package(OpenGL REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
 # Build executable
-add_executable(main main.cpp ./src/ShaderProgram.cpp ./src/Texture2D.cpp)
+add_executable(main main.cpp ./src/ShaderProgram.cpp ./src/Texture2D.cpp ./src/Camera.cpp)
 
 # GLEW paths
 set(GLEW_INCLUDE_DIR "C:/libs/glew/include")

@@ -7,19 +7,30 @@
 
 #include "./src/ShaderProgram.h"
 #include "./src/Texture2D.h"
+#include "./src/Camera.h"
 
 const char* APP_TITLE = "Hello Shaders";
 int gWindowWidth = 1024;
 int gWindowHeight = 768;
 GLFWwindow* gWindow = NULL;
 bool gWireframe = false;
+const std::string texture1_file = "./img/crate.png";
+const std::string texture2_file = "./img/grid.png";
+
+float cubeAngle = 0.0f;
+
+OrbitCamera orbitCamera;
+float gYaw = 0.0f;
+float gPitch = 0.0f;
+float gRadius = 10.0f;
+
+const float MOUSE_SENSITIVITY = 0.25f;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
-void glfw_OnFrameBufferSize(GLFWwindow* window, int width, int height);
+void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height);
+void glfw_onMouseMove(GLFWwindow* window, double posX, double posY);
 void showFPS(GLFWwindow* window);
 bool initOpenGL();
-const std::string texture1_file = "./img/crate.png";
-// const std::string texture2_file = "./img/wall.png";
 
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
@@ -69,6 +80,14 @@ int main() {
                 1.0f, 1.0f, -1.0f, 1.0f, 1.0f,
                 -1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
                 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+
+                // bottom face
+                -1.0f, -1.0f, 1.0f, 0.0f, 1.0f,
+                -1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
+                1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+                1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+                -1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
+                1.0f, -1.0f, -1.0f, 1.0f, 0.0f,
         };
         glm::vec3 cubePos = glm::vec3(0.0f, 0.0f, -5.0f);
 
@@ -95,10 +114,9 @@ int main() {
         Texture2D texture1;
         texture1.loadTexture(texture1_file, true);
 
-        // Texture2D texture2;
-        // texture2.loadTexture(texture2_file, true);
+        Texture2D texture2;
+        texture2.loadTexture(texture2_file, true);
 
-        float cubeAngle = 0.0f;
         double lastTime = glfwGetTime();
 
         while (!glfwWindowShouldClose(gWindow)) {
@@ -114,16 +132,18 @@ int main() {
                 texture1.bind(0);
                 // texture2.bind(1);
 
-                cubeAngle += (float)(deltaTime * 50.0f);
-                if (cubeAngle >= 360.0) cubeAngle = 0;
+                // cubeAngle += (float)(deltaTime * 50.0f);
+                // if (cubeAngle >= 360.0) cubeAngle = 0;
 
                 glm::mat4 model(1.0), view(1.0), projection(1.0);
 
-                glm::vec3 rotationAxis = glm::vec3(0.0f, 1.0f, 0.0f);
-                model = glm::translate(model, cubePos) * glm::rotate(model, glm::radians(cubeAngle), rotationAxis);
+                orbitCamera.setLookAt(cubePos);
+                orbitCamera.rotate(gYaw, gPitch);
+                orbitCamera.setRadius(gRadius);
 
-                glm::vec3 camPos(0.0f, 0.0f, 0.0f), targetPos(0.0f, 0.0f, -1.0f), up(0.0f, 1.0f, 0.0f);
-                view = glm::lookAt(camPos, targetPos, up);
+                model = glm::translate(model, cubePos);
+
+                view = orbitCamera.getViewMatrix();
 
                 const float fov = 45.0f;
                 const float aspectRatio = (float)gWindowWidth/(float)gWindowHeight;
@@ -137,6 +157,15 @@ int main() {
 
                 glBindVertexArray(vao);
                 glDrawArrays(GL_TRIANGLES, 0, 36);
+
+                texture2.bind(0);
+                glm::vec3 floorPos;
+                floorPos.y = -1.0f;
+                model = glm::translate(model, floorPos) * glm::scale(model, glm::vec3(10.0f, 0.01f, 10.0f));
+
+                shaderProgram.setUniform("model", model);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+
                 glBindVertexArray(0);
 
                 glfwSwapBuffers(gWindow);
@@ -174,6 +203,7 @@ bool initOpenGL() {
         glfwSwapInterval(0);  // disable vsync for better fps
 
         glfwSetKeyCallback(gWindow, glfw_onkey);
+        glfwSetCursorPosCallback(gWindow, glfw_onMouseMove);
 
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK) {
@@ -214,11 +244,30 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
 }
 
 
-void glfw_OnFrameBufferSize(GLFWwindow* window, int width, int height) {
+void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height) {
         gWindowWidth = width;
         gWindowHeight = height;
         glViewport(0, 0, gWindowWidth, gWindowHeight);
 }
+
+void glfw_onMouseMove(GLFWwindow* window, double posX, double posY) {
+        static glm::vec2 lastMousePos = glm::vec2(0, 0);
+
+        if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_LEFT) == 1) {
+                gYaw -= ((float)posX - lastMousePos.x) * MOUSE_SENSITIVITY;
+                gPitch += ((float)posY - lastMousePos.y) * MOUSE_SENSITIVITY;
+        }
+
+        if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_RIGHT) == 1) {
+                float dx = 0.01f + ((float)posX - lastMousePos.x);
+                float dy = 0.01f + ((float)posY - lastMousePos.y);
+                gRadius += dx - dy;
+        }
+
+        lastMousePos.x = (float)posX;
+        lastMousePos.y = (float)posY;
+}
+
 
 void showFPS(GLFWwindow* window) {
         static double previousSeconds = 0.0;
