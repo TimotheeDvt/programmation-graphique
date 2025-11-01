@@ -42,23 +42,25 @@ int main() {
         lightShader.loadShaders("basic.vert", "basic.frag");
 
         ShaderProgram lightingShader;
-        lightingShader.loadShaders("lighting_dir.vert", "lighting_dir.frag");
+        lightingShader.loadShaders("lighting_point.vert", "lighting_point.frag");
 
         glm::vec3 modelPos[] = {
                 glm::vec3(-2.5f, 1.0f,  0.0f), // crate
                 glm::vec3( 2.5f, 1.0f,  0.0f), // woodcrate
                 glm::vec3( 0.0f, 0.0f, -2.0f), // robot
-                glm::vec3( 0.0f, 0.0f,  0.0f)  // floor
+                glm::vec3( 0.0f, 0.0f,  0.0f),  // floor
+                glm::vec3( -2.0f, 0.0f,  0.0f)  // lamp
         };
 
         glm::vec3 modelScale[] = {
                 glm::vec3( 1.0f, 1.0f,  1.0f), // crate
                 glm::vec3( 1.0f, 1.0f,  1.0f), // woodcrate
                 glm::vec3( 1.0f, 1.0f,  1.0f), // robot
-                glm::vec3(10.0f, 0.1f, 10.0f)  // floor
+                glm::vec3(10.0f, 0.1f, 10.0f),  // floor
+                glm::vec3( 1.0f, 1.0f,  1.0f)  // lamp
         };
 
-        const int numModels = 4;
+        const int numModels = 5;
         Mesh mesh[numModels];
         Texture2D texture[numModels];
 
@@ -66,14 +68,13 @@ int main() {
         mesh[1].loadObj("./models/woodcrate.obj");
         mesh[2].loadObj("./models/robot.obj");
         mesh[3].loadObj("./models/floor.obj");
+        mesh[4].loadObj("./models/sphere.obj");
 
         texture[0].loadTexture("./img/crate.jpg", true);
         texture[1].loadTexture("./img/woodcrate_diffuse.jpg", true);
         texture[2].loadTexture("./img/robot_diffuse.jpg", true);
         texture[3].loadTexture("./img/tile_floor.jpg", true);
-
-        Mesh lightMesh;
-        lightMesh.loadObj("./models/sphere.obj");
+        texture[4].loadTexture("./img/tile_floor.jpg", true);
 
         double lastTime = glfwGetTime();
         float angle = 0;
@@ -102,24 +103,34 @@ int main() {
                 viewPos.y = fpsCamera.getPosition().y;
                 viewPos.z = fpsCamera.getPosition().z;
 
-                glm::vec3 lightPos(0.0f, 1.0f, 10.0f);
+                glm::vec3 lightPos(0.0f, 0.0f, 0.0f);
                 glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
                 glm::vec3 lightDirection(0.0f, -0.9f, -0.17f);
 
                 angle += (float)deltaTime * 50.0;
-                lightPos.x = 8.0f * sinf(glm::radians(angle));
+                modelPos[4].x = 3.0f * sinf(glm::radians(angle));
+                modelPos[4].y = 7.0f;
+                modelPos[4].z = 14.0f + 10.0f * cosf(glm::radians(angle));
+                lightPos.x = 3.0f * sinf(glm::radians(angle));
+                lightPos.y = 7.0f - 1.0f;
+                lightPos.z = 14.0f + 10.0f * cosf(glm::radians(angle));
+                // lightPos.y += 3.8f;
 
                 lightingShader.use();
                 lightingShader.setUniform("view", view);
                 lightingShader.setUniform("viewPos", viewPos);
                 lightingShader.setUniform("projection", projection);
 
-                lightingShader.setUniform("light.direction", lightDirection);
+                lightingShader.setUniform("light.position", lightPos);
                 lightingShader.setUniform("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
                 lightingShader.setUniform("light.diffuse", lightColor);
                 lightingShader.setUniform("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
 
-                for (int i = 0; i < numModels; i++) {
+                lightingShader.setUniform("light.constant", 1.0f);
+                lightingShader.setUniform("light.linear", 0.07f);
+                lightingShader.setUniform("light.exponant", 0.017f);
+
+                for (int i = 0; i < numModels - 1; i++) {
                         model = glm::translate(glm::mat4(1.0), modelPos[i]) * glm::scale(glm::mat4(1.0), modelScale[i]);
                         lightingShader.setUniform("model", model);
 
@@ -132,6 +143,16 @@ int main() {
                         mesh[i].draw();
                         texture[i].unbind(0);
                 }
+
+                lightShader.use();
+                lightShader.setUniform("view", view);
+                lightShader.setUniform("projection", projection);
+                lightShader.setUniform("lightColor", lightColor);
+
+                model = glm::translate(glm::mat4(1.0), modelPos[4]) * glm::scale(glm::mat4(1.0), modelScale[4]);
+                lightShader.setUniform("model", model);
+
+                mesh[4].draw();
 
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;
