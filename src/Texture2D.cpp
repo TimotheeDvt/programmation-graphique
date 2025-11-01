@@ -50,7 +50,7 @@ bool Texture2D::loadTexture(const string& fileName, bool generateMipMaps) {
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, imageData);
 
-    if (generateMipMaps) {
+    if (generateMipMaps)
 		glGenerateMipmap(GL_TEXTURE_2D);
 
 	stbi_image_free(imageData);
