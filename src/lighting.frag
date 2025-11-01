@@ -20,11 +20,11 @@ void main() {
     vec3 diffuse = lightColor * NDotL;
 
     float specularFactor = 0.8f;
-    float shininess = 100.0f;
+    float shininess = 120.0f;
     vec3 viewDir = normalize(viewPos - FragPos);
-    vec3 reflecDir = reflect(-lightDir, normal);
-    float RDotV = max(dot(reflecDir, viewDir), 0.0f);
-    vec3 specular = lightColor * specularFactor * pow(RDotV, shininess);
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float NDotH = max(dot(normal, halfDir), 0.0f);
+    vec3 specular = lightColor * specularFactor * pow(NDotH, shininess);
 
     vec4 texel = texture(texture1, TexCoord);
     FragColor = vec4(ambiant + diffuse + specular, 1.0f) * texel;
