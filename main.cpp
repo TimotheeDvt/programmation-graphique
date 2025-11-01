@@ -42,7 +42,7 @@ int main() {
         lightShader.loadShaders("basic.vert", "basic.frag");
 
         ShaderProgram lightingShader;
-        lightingShader.loadShaders("lighting.vert", "lighting.frag");
+        lightingShader.loadShaders("lighting_dir.vert", "lighting_dir.frag");
 
         glm::vec3 modelPos[] = {
                 glm::vec3(-2.5f, 1.0f,  0.0f), // crate
@@ -55,7 +55,7 @@ int main() {
                 glm::vec3( 1.0f, 1.0f,  1.0f), // crate
                 glm::vec3( 1.0f, 1.0f,  1.0f), // woodcrate
                 glm::vec3( 1.0f, 1.0f,  1.0f), // robot
-                glm::vec3(10.0f, 0.0f, 10.0f)  // floor
+                glm::vec3(10.0f, 0.1f, 10.0f)  // floor
         };
 
         const int numModels = 4;
@@ -104,6 +104,7 @@ int main() {
 
                 glm::vec3 lightPos(0.0f, 1.0f, 10.0f);
                 glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+                glm::vec3 lightDirection(0.0f, -0.9f, -0.17f);
 
                 angle += (float)deltaTime * 50.0;
                 lightPos.x = 8.0f * sinf(glm::radians(angle));
@@ -113,7 +114,7 @@ int main() {
                 lightingShader.setUniform("viewPos", viewPos);
                 lightingShader.setUniform("projection", projection);
 
-                lightingShader.setUniform("light.position", lightPos);
+                lightingShader.setUniform("light.direction", lightDirection);
                 lightingShader.setUniform("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
                 lightingShader.setUniform("light.diffuse", lightColor);
                 lightingShader.setUniform("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
@@ -131,14 +132,6 @@ int main() {
                         mesh[i].draw();
                         texture[i].unbind(0);
                 }
-
-                model = glm::translate(glm::mat4(1.0f), lightPos); // * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
-                lightShader.use();
-                lightShader.setUniform("lightColor", lightColor);
-                lightShader.setUniform("model", model);
-                lightShader.setUniform("view", view);
-                lightShader.setUniform("projection", projection);
-                lightMesh.draw();
 
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;

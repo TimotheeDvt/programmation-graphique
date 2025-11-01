@@ -4,12 +4,16 @@ del basic.frag 2>nul
 del basic.vert 2>nul
 del lighting.frag 2>nul
 del lighting.vert 2>nul
+del lighting_dir.frag 2>nul
+del lighting_dir.vert 2>nul
 
 REM Copy new shader files from shaders directory
 copy src\basic.frag basic.frag
 copy src\basic.vert basic.vert
 copy src\lighting.frag lighting.frag
 copy src\lighting.vert lighting.vert
+copy src\lighting_dir.frag lighting_dir.frag
+copy src\lighting_dir.vert lighting_dir.vert
 
 REM Build the project
 cmake --build build --config Release
@@ -26,3 +30,5 @@ del basic.frag 2>nul
 del basic.vert 2>nul
 del lighting.frag 2>nul
 del lighting.vert 2>nul
+del lighting_dir.frag 2>nul
+del lighting_dir.vert 2>nul
