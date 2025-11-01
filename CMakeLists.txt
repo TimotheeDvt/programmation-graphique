@@ -12,8 +12,11 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
+# Collect source files
+file(GLOB SRC_FILES "./src/*.cpp")
+
 # Build executable
-add_executable(main main.cpp ./src/ShaderProgram.cpp ./src/Texture2D.cpp ./src/Camera.cpp)
+add_executable(main main.cpp ${SRC_FILES})
 
 # GLEW paths
 set(GLEW_INCLUDE_DIR "C:/libs/glew/include")

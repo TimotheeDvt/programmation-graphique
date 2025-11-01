@@ -2,17 +2,14 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <map>
+
 #include "glm/gtc/type_ptr.hpp"
 
-ShaderProgram::ShaderProgram() {
-        mHandle = 0;
+ShaderProgram::ShaderProgram() : mHandle(0) {
 }
 
 ShaderProgram::~ShaderProgram() {
-    if (mHandle != 0) {
         glDeleteProgram(mHandle);
-    }
 }
 
 
