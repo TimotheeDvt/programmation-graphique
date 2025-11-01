@@ -51,8 +51,8 @@ void FPSCamera::move(const glm::vec3& offsetPos) {
 }
 
 void FPSCamera::rotate(float yaw, float pitch) {
-    mYaw = glm::radians(yaw);
-    mPitch = glm::radians(pitch);
+    mYaw += glm::radians(yaw);
+    mPitch += glm::radians(pitch);
 
     mPitch = glm::clamp(mPitch, -glm::pi<float>() / 2.0f + 0.1f, glm::pi<float>() / 2.0f - 0.1f);
     updateCameraVectors();
