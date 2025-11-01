@@ -34,6 +34,10 @@ const glm::vec3& Camera::getUp() const {
     return mUp;
 }
 
+const glm::vec3& Camera::getPosition() const {
+    return mPosition;
+}
+
 // FPSCamera
 FPSCamera::FPSCamera(glm::vec3 position, float yaw, float pitch) {
     mPosition = position;

@@ -18,7 +18,7 @@ bool gWireframe = false;
 
 float cubeAngle = 0.0f;
 
-FPSCamera fpsCamera(glm::vec3(0.0f, 3.0f, 10.0f));
+FPSCamera fpsCamera(glm::vec3(0.0f, 2.0f, 10.0f));
 const double ZOOM_SENSITIVITY = -3.0;
 const float MOVE_SPEED = 5.0; // units / sec
 const float MOUSE_SENSITIVITY = 0.1f;
@@ -38,8 +38,11 @@ int main() {
                 return -1;
         };
 
-        ShaderProgram shaderProgram;
-        shaderProgram.loadShaders("basic.vert", "basic.frag");
+        ShaderProgram lightShader;
+        lightShader.loadShaders("basic.vert", "basic.frag");
+
+        ShaderProgram lightingShader;
+        lightingShader.loadShaders("lighting.vert", "lighting.frag");
 
         glm::vec3 modelPos[] = {
                 glm::vec3(-2.5f, 1.0f,  0.0f), // crate
@@ -69,7 +72,11 @@ int main() {
         texture[2].loadTexture("./img/robot_diffuse.jpg", true);
         texture[3].loadTexture("./img/tile_floor.jpg", true);
 
+        Mesh lightMesh;
+        lightMesh.loadObj("./models/sphere.obj");
+
         double lastTime = glfwGetTime();
+        float angle = 0;
 
         while (!glfwWindowShouldClose(gWindow)) {
                 showFPS(gWindow);
@@ -90,18 +97,40 @@ int main() {
                 const float aspectRatio = (float)gWindowWidth/(float)gWindowHeight;
                 projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 100.0f);
 
-                shaderProgram.use();
-                shaderProgram.setUniform("view", view);
-                shaderProgram.setUniform("projection", projection);
+                glm::vec3 viewPos;
+                viewPos.x = fpsCamera.getPosition().x;
+                viewPos.y = fpsCamera.getPosition().y;
+                viewPos.z = fpsCamera.getPosition().z;
+
+                glm::vec3 lightPos(0.0f, 1.0f, 10.0f);
+                glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+
+                angle += (float)deltaTime * 50.0;
+                lightPos.x = 8.0f * sinf(glm::radians(angle));
+
+                lightingShader.use();
+                lightingShader.setUniform("view", view);
+                lightingShader.setUniform("projection", projection);
+                lightingShader.setUniform("lightColor", lightColor);
+                lightingShader.setUniform("lightPos", lightPos);
+                lightingShader.setUniform("viewPos", viewPos);
 
                 for (int i = 0; i < numModels; i++) {
                         model = glm::translate(glm::mat4(1.0), modelPos[i]) * glm::scale(glm::mat4(1.0), modelScale[i]);
-                        shaderProgram.setUniform("model", model);
+                        lightingShader.setUniform("model", model);
 
                         texture[i].bind(0);
                         mesh[i].draw();
                         texture[i].unbind(0);
                 }
+
+                model = glm::translate(glm::mat4(1.0f), lightPos) * glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 0.1f));
+                lightShader.use();
+                lightShader.setUniform("lightColor", lightColor);
+                lightShader.setUniform("model", model);
+                lightShader.setUniform("view", view);
+                lightShader.setUniform("projection", projection);
+                lightMesh.draw();
 
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;
