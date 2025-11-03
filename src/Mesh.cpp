@@ -12,12 +12,10 @@ std::vector<std::string> split(std::string s, std::string t) {
                         break;
                 }
                 res.push_back(s.substr(0, pos));
-
                 s = s.substr(pos+1, s.size() - pos - 1);
         }
         return res;
 }
-
 
 Mesh::Mesh() : mLoaded(false) {
 }
@@ -33,6 +31,12 @@ bool Mesh::loadObj(const std::string& filename) {
         std::vector<glm::vec3> tempNormals;
         std::vector<glm::vec2> tempUVs;
 
+        // Variables pour gérer les submeshes par matériau
+        std::string currentMaterial = "default";
+        std::string currentObject = "";
+        std::string currentGroup = "";
+        int currentSmoothingGroup = 0;
+
         if (filename.find(".obj") != std::string::npos) {
                 std::ifstream fin(filename, std::ios::in);
                 if (!fin) {
@@ -44,88 +48,303 @@ bool Mesh::loadObj(const std::string& filename) {
 
                 std::string lineBuffer;
                 while (std::getline(fin, lineBuffer)) {
+                        // Ignorer les lignes vides et les commentaires
+                        if (lineBuffer.empty() || lineBuffer[0] == '#')
+                                continue;
+
                         std::stringstream ss(lineBuffer);
                         std::string cmd;
                         ss >> cmd;
 
                         if (cmd == "v") {
                                 glm::vec3 vertex;
-                                int dim = 0;
-                                while (dim < 3 && ss >> vertex[dim])
-                                        dim++;
-
+                                ss >> vertex.x >> vertex.y >> vertex.z;
                                 tempVertices.push_back(vertex);
                         } else if (cmd == "vt") {
                                 glm::vec2 uv;
-                                int dim = 0;
-                                while (dim < 2 && ss >> uv[dim])
-                                        dim++;
+                                ss >> uv.x >> uv.y;
                                 tempUVs.push_back(uv);
                         } else if (cmd == "vn") {
                                 glm::vec3 normal;
-                                int dim = 0;
-                                while (dim < 3 && ss >> normal[dim])
-                                        dim++;
-
+                                ss >> normal.x >> normal.y >> normal.z;
                                 normal = glm::normalize(normal);
                                 tempNormals.push_back(normal);
+                        } else if (cmd == "mtllib") {
+                                std::string mtlFile;
+                                ss >> mtlFile;
+                                std::cout << "  Material library: " << mtlFile << std::endl;
+                                mMaterialLibrary = mtlFile;
+                                // Extraire le chemin du fichier OBJ
+                                size_t lastSlash = filename.find_last_of("/\\");
+                                std::string objPath = (lastSlash != std::string::npos) ? filename.substr(0, lastSlash + 1) : "";
+                                loadMaterial(objPath + mtlFile);
+                        } else if (cmd == "usemtl") {
+                                std::string materialName;
+                                ss >> materialName;
+                                std::cout << "  Using material: " << materialName << std::endl;
+                                currentMaterial = materialName;
+                        } else if (cmd == "o") {
+                                std::string objectName;
+                                std::getline(ss, objectName);
+                                if (!objectName.empty() && objectName[0] == ' ')
+                                        objectName = objectName.substr(1);
+                                std::cout << "  Object: " << objectName << std::endl;
+                                currentObject = objectName;
+                        } else if (cmd == "g") {
+                                std::string groupName;
+                                std::getline(ss, groupName);
+                                if (!groupName.empty() && groupName[0] == ' ')
+                                        groupName = groupName.substr(1);
+                                std::cout << "  Group: " << groupName << std::endl;
+                                currentGroup = groupName;
+                        } else if (cmd == "s") {
+                                std::string smoothing;
+                                ss >> smoothing;
+                                if (smoothing == "off") {
+                                        currentSmoothingGroup = 0;
+                                } else {
+                                        currentSmoothingGroup = std::stoi(smoothing);
+                                }
+                                std::cout << "  Smoothing group: " << currentSmoothingGroup << std::endl;
                         } else if (cmd == "f") {
-                                std::string faceData; // v/vt/vn
-                                int vertexIndex, normalIndex, uvIndex;
+                                std::string faceData;
+                                std::vector<std::string> faceVertices;
 
+                                // Lire tous les sommets de la face
                                 while (ss >> faceData) {
-                                        std::vector<std::string> data = split(faceData, "/");
+                                        faceVertices.push_back(faceData);
+                                }
 
-                                        if (data[0].size() > 0) { // v
-                                                sscanf_s(data[0].c_str(), "%d", &vertexIndex);
-                                                vertexIndices.push_back(vertexIndex);
+                                // Gérer les faces avec plus de 3 sommets (triangulation en éventail)
+                                if (faceVertices.size() >= 3) {
+                                        // Stocker les indices de début de ce sous-mesh
+                                        if (mSubMeshes.find(currentMaterial) == mSubMeshes.end()) {
+                                                SubMesh subMesh;
+                                                subMesh.materialName = currentMaterial;
+                                                subMesh.startIndex = vertexIndices.size();
+                                                subMesh.indexCount = 0;
+                                                subMesh.smoothingGroup = currentSmoothingGroup;
+                                                mSubMeshes[currentMaterial] = subMesh;
                                         }
-                                        if (data.size() >= 1) {
-                                                if (data[1].size() > 0) { // vt
-                                                        sscanf_s(data[1].c_str(), "%d", &uvIndex);
-                                                        uvIndices.push_back(uvIndex);
+
+                                        for (size_t i = 1; i < faceVertices.size() - 1; i++) {
+                                                // Triangle: sommet 0, sommet i, sommet i+1
+                                                std::string vertices[3] = {
+                                                        faceVertices[0],
+                                                        faceVertices[i],
+                                                        faceVertices[i + 1]
+                                                };
+
+                                                for (int j = 0; j < 3; j++) {
+                                                        std::vector<std::string> data = split(vertices[j], "/");
+
+                                                        // Vertex index (toujours présent)
+                                                        if (data.size() > 0 && !data[0].empty()) {
+                                                                int vertexIndex = std::stoi(data[0]);
+                                                                // Gérer les indices négatifs (relatifs à la fin)
+                                                                if (vertexIndex < 0)
+                                                                        vertexIndex = tempVertices.size() + vertexIndex + 1;
+                                                                vertexIndices.push_back(vertexIndex);
+                                                        }
+
+                                                        // Texture coordinate index (optionnel)
+                                                        if (data.size() > 1 && !data[1].empty()) {
+                                                                int uvIndex = std::stoi(data[1]);
+                                                                if (uvIndex < 0)
+                                                                        uvIndex = tempUVs.size() + uvIndex + 1;
+                                                                uvIndices.push_back(uvIndex);
+                                                        } else {
+                                                                uvIndices.push_back(0); // Pas de coordonnées de texture
+                                                        }
+
+                                                        // Normal index (optionnel)
+                                                        if (data.size() > 2 && !data[2].empty()) {
+                                                                int normalIndex = std::stoi(data[2]);
+                                                                if (normalIndex < 0)
+                                                                        normalIndex = tempNormals.size() + normalIndex + 1;
+                                                                normalIndices.push_back(normalIndex);
+                                                        } else {
+                                                                normalIndices.push_back(0); // Pas de normale
+                                                        }
                                                 }
-                                                if (data.size() >= 2 && data[2].size() > 0) { // vt
-                                                        sscanf_s(data[2].c_str(), "%d", &normalIndex);
-                                                        normalIndices.push_back(normalIndex);
-                                                }
+
+                                                mSubMeshes[currentMaterial].indexCount += 3;
                                         }
                                 }
                         }
                 }
 
-                // Close the file
                 fin.close();
 
+                // Validation des données
+                if (tempVertices.empty()) {
+                        std::cerr << "Error: No vertices found in " << filename << std::endl;
+                        return false;
+                }
 
-                // For each vertex of each triangle
-                for (unsigned int i = 0; i < vertexIndices.size(); i++) {
+                std::cout << "  Vertices: " << tempVertices.size() << std::endl;
+                std::cout << "  Normals: " << tempNormals.size() << std::endl;
+                std::cout << "  UVs: " << tempUVs.size() << std::endl;
+                std::cout << "  Triangles: " << (vertexIndices.size() / 3) << std::endl;
+                std::cout << "  SubMeshes: " << mSubMeshes.size() << std::endl;
+
+                // Calculer les normales si elles sont absentes
+                bool needToGenerateNormals = tempNormals.empty();
+                if (needToGenerateNormals) {
+                        std::cout << "  Generating normals..." << std::endl;
+                        tempNormals.resize(tempVertices.size(), glm::vec3(0.0f));
+
+                        // Calculer les normales par face et les accumuler
+                        for (size_t i = 0; i < vertexIndices.size(); i += 3) {
+                                unsigned int i0 = vertexIndices[i] - 1;
+                                unsigned int i1 = vertexIndices[i + 1] - 1;
+                                unsigned int i2 = vertexIndices[i + 2] - 1;
+
+                                glm::vec3 v0 = tempVertices[i0];
+                                glm::vec3 v1 = tempVertices[i1];
+                                glm::vec3 v2 = tempVertices[i2];
+
+                                glm::vec3 edge1 = v1 - v0;
+                                glm::vec3 edge2 = v2 - v0;
+                                glm::vec3 normal = glm::normalize(glm::cross(edge1, edge2));
+
+                                tempNormals[i0] += normal;
+                                tempNormals[i1] += normal;
+                                tempNormals[i2] += normal;
+                        }
+
+                        // Normaliser toutes les normales
+                        for (auto& normal : tempNormals) {
+                                if (glm::length(normal) > 0.0f)
+                                normal = glm::normalize(normal);
+                        }
+                }
+
+                // Générer des UVs par défaut si absents
+                if (tempUVs.empty()) {
+                        std::cout << "  No UVs found, using default (0,0)" << std::endl;
+                        tempUVs.resize(tempVertices.size(), glm::vec2(0.0f));
+                }
+
+                // Construire les vertices finaux
+                for (size_t i = 0; i < vertexIndices.size(); i++) {
                         Vertex meshVertex;
 
-                        if (tempVertices.size() > 0) {
-                                glm::vec3 vertex = tempVertices[vertexIndices[i] - 1];
-                                meshVertex.position = vertex;
+                        // Position (toujours présente)
+                        unsigned int vertexIndex = vertexIndices[i] - 1;
+                        if (vertexIndex < tempVertices.size()) {
+                                meshVertex.position = tempVertices[vertexIndex];
                         }
-                        if (tempNormals.size() > 0) {
-                                glm::vec3 normal = tempNormals[normalIndices[i] - 1];
-                                meshVertex.normal = normal;
+
+                        // Normale
+                        if (needToGenerateNormals) {
+                                meshVertex.normal = tempNormals[vertexIndex];
+                        } else if (i < normalIndices.size() && normalIndices[i] > 0) {
+                                unsigned int normalIndex = normalIndices[i] - 1;
+                                if (normalIndex < tempNormals.size()) {
+                                        meshVertex.normal = tempNormals[normalIndex];
+                                }
+                        } else {
+                                meshVertex.normal = glm::vec3(0.0f, 1.0f, 0.0f); // Normale par défaut
                         }
-                        if (tempUVs.size() > 0) {
-                                glm::vec2 uv = tempUVs[uvIndices[i] - 1];
-                                meshVertex.texCoords = uv;
+
+                        // Coordonnées de texture
+                        if (i < uvIndices.size() && uvIndices[i] > 0) {
+                                unsigned int uvIndex = uvIndices[i] - 1;
+                                if (uvIndex < tempUVs.size()) {
+                                        meshVertex.texCoords = tempUVs[uvIndex];
+                                }
+                        } else {
+                                meshVertex.texCoords = glm::vec2(0.0f); // UV par défaut
                         }
 
                         mVertices.push_back(meshVertex);
                 }
 
-                // Create and initialize the buffers
+                std::cout << "  Final vertices: " << mVertices.size() << std::endl;
+
+                // Créer et initialiser les buffers
                 initBuffers();
 
                 return (mLoaded = true);
         }
 
-        // We shouldn't get here so return failure
         return false;
+}
+
+bool Mesh::loadMaterial(const std::string& filename) {
+        std::ifstream fin(filename, std::ios::in);
+        if (!fin) {
+                std::cerr << "Cannot open material file " << filename << std::endl;
+                return false;
+        }
+
+        std::cout << "  Loading materials from " << filename << " ..." << std::endl;
+
+        Material currentMaterial;
+        std::string currentMaterialName = "";
+        bool hasMaterial = false;
+
+        std::string lineBuffer;
+        while (std::getline(fin, lineBuffer)) {
+                if (lineBuffer.empty() || lineBuffer[0] == '#')
+                        continue;
+
+                std::stringstream ss(lineBuffer);
+                std::string cmd;
+                ss >> cmd;
+
+                if (cmd == "newmtl") {
+                        // Sauvegarder le matériau précédent
+                        if (hasMaterial && !currentMaterialName.empty()) {
+                                mMaterials[currentMaterialName] = currentMaterial;
+                                std::cout << "    Material: " << currentMaterialName << std::endl;
+                        }
+
+                        // Nouveau matériau
+                        ss >> currentMaterialName;
+                        currentMaterial = Material(); // Reset
+                        hasMaterial = true;
+                } else if (cmd == "Ka") {
+                        ss >> currentMaterial.ambient.r >> currentMaterial.ambient.g >> currentMaterial.ambient.b;
+                } else if (cmd == "Kd") {
+                        ss >> currentMaterial.diffuse.r >> currentMaterial.diffuse.g >> currentMaterial.diffuse.b;
+                } else if (cmd == "Ks") {
+                        ss >> currentMaterial.specular.r >> currentMaterial.specular.g >> currentMaterial.specular.b;
+                } else if (cmd == "Ns") {
+                        ss >> currentMaterial.shininess;
+                } else if (cmd == "d" || cmd == "Tr") {
+                        ss >> currentMaterial.transparency;
+                } else if (cmd == "map_Kd") {
+                        std::string texturePath;
+                        std::getline(ss, texturePath);
+                        if (!texturePath.empty() && texturePath[0] == ' ')
+                                texturePath = texturePath.substr(1);
+                        currentMaterial.diffuseMap = texturePath;
+                } else if (cmd == "map_Ks") {
+                        std::string texturePath;
+                        std::getline(ss, texturePath);
+                        if (!texturePath.empty() && texturePath[0] == ' ')
+                                texturePath = texturePath.substr(1);
+                        currentMaterial.specularMap = texturePath;
+                } else if (cmd == "map_Bump" || cmd == "bump") {
+                        std::string texturePath;
+                        std::getline(ss, texturePath);
+                        if (!texturePath.empty() && texturePath[0] == ' ')
+                                texturePath = texturePath.substr(1);
+                        currentMaterial.normalMap = texturePath;
+                }
+        }
+
+        // Sauvegarder le dernier matériau
+        if (hasMaterial && !currentMaterialName.empty()) {
+                mMaterials[currentMaterialName] = currentMaterial;
+                std::cout << "    Material: " << currentMaterialName << std::endl;
+        }
+
+        fin.close();
+        std::cout << "  Loaded " << mMaterials.size() << " materials" << std::endl;
+        return true;
 }
 
 void Mesh::draw() {
@@ -133,8 +352,36 @@ void Mesh::draw() {
 
         glBindVertexArray(mVAO);
         glDrawArrays(GL_TRIANGLES, 0, mVertices.size());
-
         glBindVertexArray(0);
+}
+
+void Mesh::drawSubMesh(const std::string& materialName) {
+        if(!mLoaded) return;
+
+        auto it = mSubMeshes.find(materialName);
+        if (it == mSubMeshes.end()) return;
+
+        const SubMesh& subMesh = it->second;
+
+        glBindVertexArray(mVAO);
+        glDrawArrays(GL_TRIANGLES, subMesh.startIndex, subMesh.indexCount);
+        glBindVertexArray(0);
+}
+
+const std::map<std::string, SubMesh>& Mesh::getSubMeshes() const {
+        return mSubMeshes;
+}
+
+const std::map<std::string, Material>& Mesh::getMaterials() const {
+        return mMaterials;
+}
+
+const Material* Mesh::getMaterial(const std::string& name) const {
+        auto it = mMaterials.find(name);
+        if (it != mMaterials.end()) {
+                return &(it->second);
+        }
+        return nullptr;
 }
 
 void Mesh::initBuffers() {
@@ -146,17 +393,16 @@ void Mesh::initBuffers() {
         glBufferData(GL_ARRAY_BUFFER, mVertices.size() * sizeof(Vertex), &mVertices[0], GL_STATIC_DRAW);
 
         // Vertex Positions
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), NULL);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
         glEnableVertexAttribArray(0);
 
-        // Normal
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(3 * sizeof(GLfloat)));
+        // Normals
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(Vertex, normal)));
         glEnableVertexAttribArray(1);
 
-        // Vertex Texture Coords
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(6 * sizeof(GLfloat)));
+        // Texture Coords
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(offsetof(Vertex, texCoords)));
         glEnableVertexAttribArray(2);
 
-        // unbind to make sure other code does not change it somewhere else
         glBindVertexArray(0);
 }
