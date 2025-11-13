@@ -9,6 +9,7 @@
 #include "./src/Texture2D.h"
 #include "./src/Camera.h"
 #include "./src/Mesh.h"
+#include "./src/Scene.h"
 
 const char* APP_TITLE = "Hello Shaders";
 int gWindowWidth = 1024;
@@ -32,11 +33,6 @@ void update(double elapsedTime);
 void showFPS(GLFWwindow* window);
 bool initOpenGL();
 
-struct Rotation {
-        float angle;
-        glm::vec3 axis;
-};
-
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
         if(!initOpenGL()) {
@@ -50,44 +46,14 @@ int main() {
         ShaderProgram lightingShader;
         lightingShader.loadShaders("lighting_dir.vert", "lighting_dir.frag");
 
-        glm::vec3 modelPos[] = {
-                glm::vec3( 0.0f, 0.0f,  0.0f), // floor
-                glm::vec3( 2.5f, 1.0f,  0.0f), // guitar
-                glm::vec3( -2.5f, 1.0f, 0.0f), // table
-                glm::vec3( 0.0f, 0.0f,  0.0f)  // floor
-        };
-
-        glm::vec3 modelScale[] = {
-                glm::vec3(10.0f, 0.1f, 10.0f), // floor
-                glm::vec3( 1.0f, 1.0f,  1.0f), // guitar
-                glm::vec3(1.0f, 1.0f, 1.0f), // table
-                glm::vec3(10.0f, 0.1f, 10.0f)  // floor
-        };
-
-        const int numModels = 3;
+        Scene scene;
+        const int numModels = 4;
         Mesh mesh[numModels];
         Texture2D texture[numModels];
-
-        Rotation modelRot[numModels];
         for (int i = 0; i < numModels; ++i) {
-                Rotation tempRot;
-                tempRot.angle = 0.0f;
-                tempRot.axis = glm::vec3(0.0f, 1.0f, 0.0f);
-                modelRot[i] = tempRot;
+                mesh[i].loadObj(scene.models[i].meshFile);
+                texture[i].loadTexture(scene.models[i].textureFile, true);
         }
-        Rotation wolf_rot;
-        wolf_rot.angle = 270.0f;
-        wolf_rot.axis = glm::vec3(1.0f, 0.0f, 0.0f);
-
-        modelRot[2] = wolf_rot;
-
-        mesh[0].loadObj("./models/floor.obj");
-        mesh[1].loadObj("./new_models/g/Guitar_01.obj");
-        mesh[2].loadObj("./new_models/Wolf-Blender-2.82a.obj");
-
-        texture[0].loadTexture("./img/tile_floor.jpg", true);
-        texture[1].loadTexture("./new_models/g/Guitar_01_Textures_UnrealEngine4/guitar_01_BaseColor.png", true);
-        texture[1].loadTexture("./new_models/table_basecolor.png", true);
 
         double lastTime = glfwGetTime();
         float angle = 0;
@@ -131,9 +97,9 @@ int main() {
                 lightingShader.setUniform("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
 
                 for (int i = 0; i < numModels; i++) {
-                        model = glm::translate(glm::mat4(1.0f), modelPos[i])
-                                * glm::scale(glm::mat4(1.0f), modelScale[i])
-                                * glm::rotate(glm::mat4(1.0f), glm::radians(modelRot[i].angle), modelRot[i].axis);
+                        model = glm::translate(glm::mat4(1.0f), scene.models[i].position)
+                                * glm::scale(glm::mat4(1.0f), scene.models[i].scale)
+                                * glm::rotate(glm::mat4(1.0f), glm::radians(scene.models[i].rotation.angle), scene.models[i].rotation.axis);
 
                         lightingShader.setUniform("model", model);
 
@@ -153,37 +119,37 @@ int main() {
                         } else {
                                 // Dessiner chaque submesh avec son matériau
                                 for (const auto& submeshPair : subMeshes) {
-                                const std::string& materialName = submeshPair.first;
-                                const SubMesh& submesh = submeshPair.second;
+                                        const std::string& materialName = submeshPair.first;
+                                        const SubMesh& submesh = submeshPair.second;
 
-                                // Récupérer les propriétés du matériau
-                                const Material* mat = mesh[i].getMaterial(materialName);
+                                        // Récupérer les propriétés du matériau
+                                        const Material* mat = mesh[i].getMaterial(materialName);
 
-                                if (mat) {
-                                        lightingShader.setUniform("material.ambient", mat->ambient);
-                                        lightingShader.setUniform("material.specular", mat->specular);
-                                        lightingShader.setUniform("material.shininess", mat->shininess);
+                                        if (mat) {
+                                                lightingShader.setUniform("material.ambient", mat->ambient);
+                                                lightingShader.setUniform("material.specular", mat->specular);
+                                                lightingShader.setUniform("material.shininess", mat->shininess);
 
-                                        // Si le matériau a une texture, la charger
-                                        // (vous devrez créer un système de cache de textures)
-                                        // Pour l'instant, utiliser la texture par défaut
-                                        lightingShader.setUniformSampler("material.diffuseMap", 0);
-                                        texture[i].bind(0);
-                                } else {
-                                        // Matériau non trouvé, utiliser les valeurs par défaut
-                                        lightingShader.setUniform("material.ambient", glm::vec3(0.1f, 0.1f, 0.1f));
-                                        lightingShader.setUniformSampler("material.diffuseMap", 0);
-                                        lightingShader.setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
-                                        lightingShader.setUniform("material.shininess", 32.0f);
-                                        texture[i].bind(0);
-                                }
+                                                // Si le matériau a une texture, la charger
+                                                // (vous devrez créer un système de cache de textures)
+                                                // Pour l'instant, utiliser la texture par défaut
+                                                lightingShader.setUniformSampler("material.diffuseMap", 0);
+                                                texture[i].bind(0);
+                                        } else {
+                                                // Matériau non trouvé, utiliser les valeurs par défaut
+                                                lightingShader.setUniform("material.ambient", glm::vec3(0.1f, 0.1f, 0.1f));
+                                                lightingShader.setUniformSampler("material.diffuseMap", 0);
+                                                lightingShader.setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
+                                                lightingShader.setUniform("material.shininess", 32.0f);
+                                                texture[i].bind(0);
+                                        }
 
-                                // Dessiner ce submesh spécifique
-                                mesh[i].drawSubMesh(materialName);
-                                texture[i].unbind(0);
+                                        // Dessiner ce submesh spécifique
+                                        mesh[i].drawSubMesh(materialName);
+                                        texture[i].unbind(0);
                                 }
                         }
-                        }
+                }
 
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;
