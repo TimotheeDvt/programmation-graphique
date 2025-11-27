@@ -154,70 +154,61 @@ void Chunk::generate() {
                                 sin(worldX * 0.05f) * 4.0f +
                                 cos(worldZ * 0.05f) * 4.0f;
 
-                        int height = 16 + (int)h;      // Middle terrain height
+                        int height = 16 + (int)h;
                         height = glm::clamp(height, 4, CHUNK_HEIGHT - 10);
 
                         // --- Fill blocks (Minecraft-like layers) ---
                         for (int y = 0; y < CHUNK_HEIGHT; y++) {
                                 if (y < height - 4) {
-                                        mBlocks[x][y][z] = BlockType::STONE; // deep layer
+                                        mBlocks[x][y][z] = BlockType::STONE;
                                 }
                                 else if (y < height - 1) {
-                                        mBlocks[x][y][z] = BlockType::DIRT; // dirt layer
+                                        mBlocks[x][y][z] = BlockType::DIRT;
                                 }
                                 else if (y == height - 1) {
-                                        mBlocks[x][y][z] = BlockType::GRASS; // surface
+                                        mBlocks[x][y][z] = BlockType::GRASS;
                                 }
                                 else {
                                         mBlocks[x][y][z] = BlockType::AIR;
                                 }
                         }
 
+                        // Add redstone blocks randomly for testing
+
                         if (dist(rng) < 0.01f && height + 1 < CHUNK_HEIGHT - 1) {
                                 mBlocks[x][height + 1][z] = BlockType::REDSTONE;
                         }
 
-                        if (dist(rng) < 0.01f && height < CHUNK_HEIGHT - 7) {  // 3% chance, need room for tree
-                                // Check if this position has grass
+                        if (dist(rng) < 0.001f) {
+                                // check if neighboring blocks are tree
                                 if (mBlocks[x][height - 1][z] != BlockType::GRASS) {
                                         continue;
                                 }
-
-                                // Check for nearby trees to avoid clumping
-                                bool hasNearbyTree = false;
-                                for (int dx = -3; dx <= 3; dx++) {
-                                        for (int dz = -3; dz <= 3; dz++) {
-                                                if (dx == 0 && dz == 0) continue;
-
-                                                int checkX = x + dx;
-                                                int checkZ = z + dz;
-
-                                                if (checkX >= 0 && checkX < CHUNK_SIZE && checkZ >= 0 && checkZ < CHUNK_SIZE) {
-                                                        // Check if there's wood at or above ground level
-                                                        if (mBlocks[checkX][height][checkZ] == BlockType::WOOD || mBlocks[checkX][height + 1][checkZ] == BlockType::WOOD) {
-                                                                hasNearbyTree = true;
-                                                                break;
-                                                        }
+                                for (int dx = -1; dx <= 1; dx++) {
+                                        for (int dz = -1; dz <= 1; dz++) {
+                                                if (x + dx < 0 || x + dx >= CHUNK_SIZE || z + dz < 0 || z + dz >= CHUNK_SIZE) {
+                                                        continue;
+                                                }
+                                                if (mBlocks[x + dx][height][z + dz] == BlockType::WOOD) {
+                                                        goto skip_tree;
                                                 }
                                         }
-                                        if (hasNearbyTree) break;
+                                }
+                                int trunkHeight = 2 + (rng() % 4);
+
+                                // Trunk (vertical)
+                                for (int i = 0; i < trunkHeight; i++) {
+                                        mBlocks[x][height + i][z] = BlockType::WOOD;
                                 }
 
-                                if (hasNearbyTree) continue;
-
-                                // Generate tree
-                                int trunkHeight = 4 + (rng() % 2);  // 4-5 blocks tall
-
-                                // Build trunk
-                                for (int ty = 0; ty < trunkHeight; ty++) {
-                                        if (height + ty < CHUNK_HEIGHT) {
-                                                mBlocks[x][height + ty][z] = BlockType::WOOD;
-                                        }
+                                // Leaf blob
+                                const int topTreeBlock = height + trunkHeight - 1;
+                                mBlocks[x][topTreeBlock + 1][z] = BlockType::LEAVES;
+                                for (int lx = -2; lx <= 2; lx++) {
+                                        mBlocks[x - lx][topTreeBlock + 1][z] = BlockType::LEAVES;
                                 }
 
-                                // Build leaves (3D spherical blob)
-                                int leafTop = height + trunkHeight;
-                                mBlocks[x][leafTop][z] = BlockType::LEAVES;
+                                skip_tree: ;
                         }
                 }
         }
@@ -258,51 +249,43 @@ bool Chunk::shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const 
 }
 
 glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int corner) {
-        // Texture atlas is 1024x512, each texture is 256x256
-        // UV coordinates: 0.0 to 1.0 maps to entire atlas
-        // Each texture takes up: 256/1024 = 0.25 horizontally, 256/512 = 0.5 vertically
-
         float u = 0.0f, v = 0.0f;
-        float texSizeU = 0.25f;  // 256/1024
-        float texSizeV = 0.5f;   // 256/512
-
-        // Layout: Row 0: [Grass Top] [Grass Side] [Dirt] [Stone]
-        //         Row 1: [Redstone] [Wood] [Leaves] [Empty]
+        float texSizeU = 0.25f;
+        float texSizeV = 0.5f;
 
         switch (type) {
                 case BlockType::GRASS:
-                        if (normal.y > 0.5f) { // Top face
-                                u = 0.0f; v = 0.5f; // Grass top (0,0)
-                        } else if (normal.y < -0.5f) { // Bottom face
-                                u = 0.5f; v = 0.5f; // (2,0)
-                        } else { // Side faces
-                                u = 0.25f; v = 0.5f; // (2,0)
+                        if (normal.y > 0.5f) {
+                                u = 0.0f; v = 0.5f;
+                        } else if (normal.y < -0.5f) {
+                                u = 0.5f; v = 0.5f;
+                        } else {
+                                u = 0.25f; v = 0.5f;
                         }
                         break;
                 case BlockType::DIRT:
-                        u = 0.5f; v = 0.5f; // (2,0)
+                        u = 0.5f; v = 0.5f;
                         break;
                 case BlockType::STONE:
-                        u = 0.75f; v = 0.5f; // (3,0)
+                        u = 0.75f; v = 0.5f;
                         break;
                 case BlockType::REDSTONE:
-                        u = 0.0f; v = 0.0f; // (0,1)
+                        u = 0.0f; v = 0.0f;
                         break;
                 case BlockType::WOOD:
-                        u = 0.25f; v = 0.0f; // (1,1)
+                        u = 0.25f; v = 0.0f;
                         break;
                 case BlockType::LEAVES:
-                        u = 0.5f; v = 0.0f; // (2,1)
+                        u = 0.5f; v = 0.0f;
                         break;
                 case BlockType::AIR:
-                        u = 0.75f; v = 0.0f; // (2,1)
+                        u = 0.75f; v = 0.0f;
                         break;
                 default:
-                        u = 0.75f; v = 0.0f; // (2,1)
+                        u = 0.75f; v = 0.0f;
                         break;
         }
 
-        // Add corner offset - each texture is 0.25 x 0.5
         if (corner == 1 || corner == 2) u += texSizeU;
         if (corner == 2 || corner == 3) v += texSizeV;
 
@@ -310,44 +293,42 @@ glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int c
 }
 
 void Chunk::addFace(int x, int y, int z, const glm::vec3& normal, BlockType type) {
-        glm::vec3 chunkWorldPos = glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE);
-        glm::vec3 worldPos = chunkWorldPos + glm::vec3(x, y, z);
-        // Define the four corners of the face based on normal direction
+        glm::vec3 worldPos = glm::vec3(x, y, z);
+
         glm::vec3 corners[4];
 
-        if (normal.z > 0.5f) { // Front (+Z)
+        if (normal.z > 0.5f) {
                 corners[0] = worldPos + glm::vec3(-0.5f, -0.5f,  0.5f);
                 corners[1] = worldPos + glm::vec3( 0.5f, -0.5f,  0.5f);
                 corners[2] = worldPos + glm::vec3( 0.5f,  0.5f,  0.5f);
                 corners[3] = worldPos + glm::vec3(-0.5f,  0.5f,  0.5f);
-        } else if (normal.z < -0.5f) { // Back (-Z)
+        } else if (normal.z < -0.5f) {
                 corners[0] = worldPos + glm::vec3( 0.5f, -0.5f, -0.5f);
                 corners[1] = worldPos + glm::vec3(-0.5f, -0.5f, -0.5f);
                 corners[2] = worldPos + glm::vec3(-0.5f,  0.5f, -0.5f);
                 corners[3] = worldPos + glm::vec3( 0.5f,  0.5f, -0.5f);
-        } else if (normal.y > 0.5f) { // Top (+Y)
+        } else if (normal.y > 0.5f) {
                 corners[0] = worldPos + glm::vec3(-0.5f,  0.5f,  0.5f);
                 corners[1] = worldPos + glm::vec3( 0.5f,  0.5f,  0.5f);
                 corners[2] = worldPos + glm::vec3( 0.5f,  0.5f, -0.5f);
                 corners[3] = worldPos + glm::vec3(-0.5f,  0.5f, -0.5f);
-        } else if (normal.y < -0.5f) { // Bottom (-Y)
+        } else if (normal.y < -0.5f) {
                 corners[0] = worldPos + glm::vec3(-0.5f, -0.5f, -0.5f);
                 corners[1] = worldPos + glm::vec3( 0.5f, -0.5f, -0.5f);
                 corners[2] = worldPos + glm::vec3( 0.5f, -0.5f,  0.5f);
                 corners[3] = worldPos + glm::vec3(-0.5f, -0.5f,  0.5f);
-        } else if (normal.x > 0.5f) { // Right (+X)
+        } else if (normal.x > 0.5f) {
                 corners[0] = worldPos + glm::vec3( 0.5f, -0.5f,  0.5f);
                 corners[1] = worldPos + glm::vec3( 0.5f, -0.5f, -0.5f);
                 corners[2] = worldPos + glm::vec3( 0.5f,  0.5f, -0.5f);
                 corners[3] = worldPos + glm::vec3( 0.5f,  0.5f,  0.5f);
-        } else { // Left (-X)
+        } else {
                 corners[0] = worldPos + glm::vec3(-0.5f, -0.5f, -0.5f);
                 corners[1] = worldPos + glm::vec3(-0.5f, -0.5f,  0.5f);
                 corners[2] = worldPos + glm::vec3(-0.5f,  0.5f,  0.5f);
                 corners[3] = worldPos + glm::vec3(-0.5f,  0.5f, -0.5f);
         }
 
-        // CRITICAL FIX: Add TWO triangles (6 vertices) per face, not 3!
         // Triangle 1: corners 0, 1, 2
         CubeVertex v0, v1, v2;
         v0.position = corners[0];
@@ -388,14 +369,12 @@ void Chunk::addFace(int x, int y, int z, const glm::vec3& normal, BlockType type
 void Chunk::buildMesh() {
         mVertices.clear();
 
-        // Build mesh with face culling
         for (int x = 0; x < CHUNK_SIZE; x++) {
                 for (int y = 0; y < CHUNK_HEIGHT; y++) {
                         for (int z = 0; z < CHUNK_SIZE; z++) {
                                 BlockType type = getBlock(x, y, z);
                                 if (!isSolidBlock(type)) continue;
 
-                                // Check each face
                                 if (shouldRenderFace(x, y, z, 0, 0, 1))  addFace(x, y, z, glm::vec3( 0,  0,  1), type);
                                 if (shouldRenderFace(x, y, z, 0, 0, -1)) addFace(x, y, z, glm::vec3( 0,  0, -1), type);
                                 if (shouldRenderFace(x, y, z, 0, 1, 0))  addFace(x, y, z, glm::vec3( 0,  1,  0), type);
@@ -408,7 +387,6 @@ void Chunk::buildMesh() {
 
         mVertexCount = mVertices.size();
 
-        // Setup OpenGL buffers
         if (mVAO == 0) {
                 glGenVertexArrays(1, &mVAO);
                 glGenBuffers(1, &mVBO);
@@ -475,7 +453,7 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
-                                                positions.push_back(chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f));
+                                                positions.push_back(chunkPos + glm::vec3(x, y, z));
                                         }
                                 }
                         }
