@@ -8,73 +8,17 @@
 #include "./src/ShaderProgram.h"
 #include "./src/Texture2D.h"
 #include "./src/Camera.h"
-#include "./src/Mesh.h"
-#include "./src/Scene.h"
+#include "./src/Cube.h"
 
-
-class TextureManager {
-private:
-        std::map<std::string, Texture2D*> textureCache;
-
-public:
-        ~TextureManager() {
-                // Nettoyer toutes les textures
-                for (auto& pair : textureCache) {
-                        delete pair.second;
-                }
-                textureCache.clear();
-        }
-
-        Texture2D* loadTexture(const std::string& filepath) {
-                if (filepath.empty()) {
-                        return nullptr;
-                }
-
-                // Vérifier si la texture est déjà chargée
-                auto it = textureCache.find(filepath);
-                if (it != textureCache.end()) {
-                        return it->second;
-                }
-
-                // Charger la nouvelle texture
-                Texture2D* newTexture = new Texture2D();
-                if (newTexture->loadTexture(filepath, true)) {
-                        textureCache[filepath] = newTexture;
-                        std::cout << "Loaded texture: " << filepath << std::endl;
-                        return newTexture;
-                } else {
-                        delete newTexture;
-                        std::cerr << "Failed to load texture: " << filepath << std::endl;
-                        return nullptr;
-                }
-        }
-
-        void bindTexture(const std::string& filepath, GLuint textureUnit) {
-                Texture2D* tex = loadTexture(filepath);
-                if (tex) {
-                        tex->bind(textureUnit);
-                }
-        }
-
-        void unbindTexture(GLuint textureUnit) {
-                glActiveTexture(GL_TEXTURE0 + textureUnit);
-                glBindTexture(GL_TEXTURE_2D, 0);
-        }
-};
-
-
-const char* APP_TITLE = "Hello Shaders";
-int gWindowWidth = 1024;
-int gWindowHeight = 768;
+const char* APP_TITLE = "Minecraft Clone - OpenGL Demo";
+int gWindowWidth = 1280;
+int gWindowHeight = 720;
 GLFWwindow* gWindow = NULL;
 bool gWireframe = false;
-bool gFlashlightOn = true;
 
-float cubeAngle = 0.0f;
-
-FPSCamera fpsCamera(glm::vec3(0.0f, 2.0f, 10.0f));
+FPSCamera fpsCamera(glm::vec3(0.0f, 10.0f, 20.0f));
 const double ZOOM_SENSITIVITY = -3.0;
-const float MOVE_SPEED = 2.0; // units / sec
+const float MOVE_SPEED = 8.0;
 const float MOUSE_SENSITIVITY = 0.1f;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
@@ -87,36 +31,30 @@ bool initOpenGL();
 
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
+
         if(!initOpenGL()) {
                 std::cerr << "OpenGL initialization failed" << std::endl;
                 return -1;
-        };
-
-        ShaderProgram lightShader;
-        lightShader.loadShaders("basic.vert", "basic.frag");
-
-        ShaderProgram lightingShader;
-        lightingShader.loadShaders("lighting_dir.vert", "lighting_dir.frag");
-
-        ShaderProgram pbrShader;
-        pbrShader.loadShaders("lighting_pbr.vert", "lighting_pbr.frag");
-
-        Scene scene;
-        const int numModels = 1;
-        Mesh mesh[numModels];
-
-        // Créer le gestionnaire de textures
-        TextureManager texManager;
-
-        // Charger les meshes (les textures seront chargées à la demande)
-        for (int i = 0; i < numModels; ++i) {
-                mesh[i].loadObj(scene.models[i].meshFile);
         }
 
-        glm::vec3 lightPos = fpsCamera.getPosition();
-        lightPos.y -= 0.5f;
-        glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
-        glm::vec3 lightDirection(0.0f, -0.9f, -0.17f);
+        // Load shaders
+        ShaderProgram minecraftShader;
+        minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
+
+        // Load block texture atlas
+        Texture2D blockTexture;
+        blockTexture.loadTexture("./textures/blocks.png", true);
+
+        // Generate world
+        World world;
+        world.generate(4); // 4 chunk render distance
+
+        std::cout << "World generated successfully!" << std::endl;
+
+        // Get redstone light positions
+        std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
+        std::cout << "Found " << redstoneLights.size() << " redstone blocks" << std::endl;
+
         double lastTime = glfwGetTime();
 
         while (!glfwWindowShouldClose(gWindow)) {
@@ -130,138 +68,56 @@ int main() {
 
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-                glm::mat4 model(1.0), view(1.0), projection(1.0);
+                // Setup matrices
+                glm::mat4 model = glm::mat4(1.0f);
+                glm::mat4 view = fpsCamera.getViewMatrix();
 
-                view = fpsCamera.getViewMatrix();
-
-                const float fov = fpsCamera.getFOV();
-                const float aspectRatio = (float)gWindowWidth/(float)gWindowHeight;
-                projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 100.0f);
+                float fov = fpsCamera.getFOV();
+                float aspectRatio = (float)gWindowWidth / (float)gWindowHeight;
+                glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 200.0f);
 
                 glm::vec3 viewPos = fpsCamera.getPosition();
-                glm::vec3 lightDirection(0.0f, -0.9f, -0.17f);
-                glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
 
-                pbrShader.use();
-                pbrShader.setUniform("view", view);
-                pbrShader.setUniform("viewPos", viewPos);
-                pbrShader.setUniform("projection", projection);
+                // Use shader
+                minecraftShader.use();
+                minecraftShader.setUniform("model", model);
+                minecraftShader.setUniform("view", view);
+                minecraftShader.setUniform("projection", projection);
+                minecraftShader.setUniform("viewPos", viewPos);
 
-                lightingShader.use();
-                lightingShader.setUniform("view", view);
-                lightingShader.setUniform("viewPos", viewPos);
-                lightingShader.setUniform("projection", projection);
+                // Directional light (sun)
+                glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
+                minecraftShader.setUniform("dirLight.direction", sunDirection);
+                minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f));
+                minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f));
+                minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f));
 
-                lightingShader.setUniform("light.direction", lightDirection);
-                lightingShader.setUniform("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
-                lightingShader.setUniform("light.diffuse", lightColor);
-                lightingShader.setUniform("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+                // Point lights (redstone) - limit to closest 50
+                int numLights = std::min((int)redstoneLights.size(), 50);
+                minecraftShader.setUniform("numPointLights", numLights);
 
-                for (int i = 0; i < numModels; i++) {
-                        model = glm::translate(glm::mat4(1.0f), scene.models[i].position)
-                                * glm::scale(glm::mat4(1.0f), scene.models[i].scale)
-                                * glm::rotate(glm::mat4(1.0f), glm::radians(scene.models[i].rotation.angle), scene.models[i].rotation.axis);
+                for (int i = 0; i < numLights; i++) {
+                        std::string base = "pointLights[" + std::to_string(i) + "]";
 
-                        pbrShader.setUniform("model", model);
-
-                        // Extraire le chemin de base du fichier OBJ
-                        std::string objPath = scene.models[i].meshFile;
-                        size_t lastSlash = objPath.find_last_of("/\\");
-                        std::string basePath = (lastSlash != std::string::npos) ? objPath.substr(0, lastSlash + 1) : "";
-
-                        const auto& subMeshes = mesh[i].getSubMeshes();
-
-                        if (subMeshes.empty()) {
-                                // Pas de submeshes, rendu simple
-                                lightingShader.setUniform("material.ambient", glm::vec3(0.1f, 0.1f, 0.1f));
-                                lightingShader.setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
-                                lightingShader.setUniform("material.shininess", 32.0f);
-                                lightingShader.setUniform("material.hasNormalMap", false);
-                                lightingShader.setUniform("material.hasRoughnessMap", false);
-                                lightingShader.setUniform("material.hasMetallicMap", false);
-                                lightingShader.setUniform("material.hasEmissiveMap", false);
-
-                                // Utiliser la texture par défaut du modèle
-                                if (!scene.models[i].textureFile.empty()) {
-                                        texManager.bindTexture(scene.models[i].textureFile, 0);
-                                }
-                                lightingShader.setUniformSampler("material.diffuseMap", 0);
-
-                                mesh[i].draw();
-                                texManager.unbindTexture(0);
-                        } else {
-                                // Dessiner chaque submesh avec son matériau complet
-                                for (const auto& submeshPair : subMeshes) {
-                                        const std::string& materialName = submeshPair.first;
-                                        const Material* mat = mesh[i].getMaterial(materialName);
-
-                                        if (mat) {
-                                                // Propriétés de base
-                                                lightingShader.setUniform("material.ambient", mat->ambient);
-                                                lightingShader.setUniform("material.specular", mat->specular);
-                                                lightingShader.setUniform("material.shininess", mat->shininess);
-                                                lightingShader.setUniform("material.bumpMultiplier", mat->bumpMultiplier);
-
-                                                // Texture diffuse (slot 0)
-                                                if (!mat->diffuseMap.empty()) {
-                                                        texManager.bindTexture(basePath + mat->diffuseMap, 0);
-                                                }
-                                                lightingShader.setUniformSampler("material.diffuseMap", 0);
-
-                                                // Normal map (slot 1)
-                                                bool hasNormal = !mat->normalMap.empty();
-                                                pbrShader.setUniform("material.hasNormalMap", hasNormal);
-                                                if (hasNormal) {
-                                                        texManager.bindTexture(basePath + mat->normalMap, 1);
-                                                        pbrShader.setUniformSampler("material.normalMap", 1);
-                                                }
-
-                                                // Roughness map (slot 2)
-                                                bool hasRoughness = !mat->roughnessMap.empty();
-                                                pbrShader.setUniform("material.hasRoughnessMap", hasRoughness);
-                                                if (hasRoughness) {
-                                                        texManager.bindTexture(basePath + mat->roughnessMap, 2);
-                                                        pbrShader.setUniformSampler("material.roughnessMap", 2);
-                                                }
-
-                                                // Metallic map (slot 3)
-                                                bool hasMetallic = !mat->metallicMap.empty();
-                                                pbrShader.setUniform("material.hasMetallicMap", hasMetallic);
-                                                if (hasMetallic) {
-                                                        texManager.bindTexture(basePath + mat->metallicMap, 3);
-                                                        pbrShader.setUniformSampler("material.metallicMap", 3);
-                                                }
-
-                                                // Emissive map (slot 4)
-                                                bool hasEmissive = !mat->emissiveMap.empty();
-                                                pbrShader.setUniform("material.hasEmissiveMap", hasEmissive);
-                                                if (hasEmissive) {
-                                                        texManager.bindTexture(basePath + mat->emissiveMap, 4);
-                                                        pbrShader.setUniformSampler("material.emissiveMap", 4);
-                                                }
-
-                                                // Dessiner le submesh
-                                                mesh[i].drawSubMesh(materialName);
-
-                                                // Unbind toutes les textures
-                                                for (int slot = 0; slot < 5; ++slot) {
-                                                        texManager.unbindTexture(slot);
-                                                }
-                                        } else {
-                                                // Matériau non trouvé, utiliser les valeurs par défaut
-                                                lightingShader.setUniform("material.ambient", glm::vec3(0.1f));
-                                                lightingShader.setUniform("material.specular", glm::vec3(0.5f));
-                                                lightingShader.setUniform("material.shininess", 32.0f);
-                                                pbrShader.setUniform("material.hasNormalMap", false);
-                                                pbrShader.setUniform("material.hasRoughnessMap", false);
-                                                pbrShader.setUniform("material.hasMetallicMap", false);
-                                                pbrShader.setUniform("material.hasEmissiveMap", false);
-
-                                                mesh[i].drawSubMesh(materialName);
-                                        }
-                                }
-                        }
+                        minecraftShader.setUniform((base + ".position").c_str(), redstoneLights[i]);
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.1f, 0.0f, 0.0f));
+                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
+                        minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(1.0f, 0.2f, 0.2f));
+                        minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
+                        minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
+                        minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
                 }
+
+                // Material properties
+                minecraftShader.setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
+                minecraftShader.setUniformSampler("material.diffuseMap", 0);
+                minecraftShader.setUniform("material.specular", glm::vec3(0.1f, 0.1f, 0.1f));
+                minecraftShader.setUniform("material.shininess", 8.0f);
+
+                // Draw world
+                blockTexture.bind(0);
+                world.draw();
+                blockTexture.unbind(0);
 
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;
@@ -279,7 +135,6 @@ bool initOpenGL() {
 
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
         gWindow = glfwCreateWindow(gWindowWidth, gWindowHeight, APP_TITLE, NULL, NULL);
@@ -291,9 +146,10 @@ bool initOpenGL() {
         }
 
         glfwMakeContextCurrent(gWindow);
-        glfwSwapInterval(0);  // disable vsync for better fps
+        glfwSwapInterval(1);
 
         glfwSetKeyCallback(gWindow, glfw_onkey);
+        glfwSetFramebufferSizeCallback(gWindow, glfw_onFrameBufferSize);
         glfwSetCursorPosCallback(gWindow, glfw_onMouseMove);
         glfwSetScrollCallback(gWindow, glfw_onMouseScroll);
 
@@ -307,12 +163,14 @@ bool initOpenGL() {
                 return false;
         }
 
-        glClearColor(0.23f, 0.38f, 0.47f, 1.0f);
+        glClearColor(0.53f, 0.81f, 0.98f, 1.0f); // Sky blue
         glViewport(0, 0, gWindowWidth, gWindowHeight);
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
         return true;
 }
-
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode) {
         if (action != GLFW_PRESS) {
@@ -321,25 +179,20 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
 
         switch (key){
                 case GLFW_KEY_ESCAPE:
-                        glfwSetWindowShouldClose(window, GL_TRUE);
-                        break;
+                glfwSetWindowShouldClose(window, GL_TRUE);
+                break;
                 case GLFW_KEY_1:
-                        gWireframe = !gWireframe;
-                        if (gWireframe) {
-                                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                        } else {
-                                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                        }
-                        break;
-                case GLFW_KEY_F:
-                        gFlashlightOn = !gFlashlightOn;
-                        std::cout << "Flashlight " << (gFlashlightOn ? "ON" : "OFF") << std::endl;
-                        break;
+                gWireframe = !gWireframe;
+                if (gWireframe) {
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                } else {
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                }
+                break;
                 default:
-                        break;
+                break;
         }
 }
-
 
 void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height) {
         gWindowWidth = width;
@@ -348,62 +201,46 @@ void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height) {
 }
 
 void glfw_onMouseMove(GLFWwindow* window, double posX, double posY) {
-        // static glm::vec2 lastMousePos = glm::vec2(0, 0);
-
-        // if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_LEFT) == 1) {
-        //         gYaw -= ((float)posX - lastMousePos.x) * MOUSE_SENSITIVITY;
-        //         gPitch += ((float)posY - lastMousePos.y) * MOUSE_SENSITIVITY;
-        // }
-
-        // if (glfwGetMouseButton(gWindow, GLFW_MOUSE_BUTTON_RIGHT) == 1) {
-        //         float dx = 0.01f + ((float)posX - lastMousePos.x);
-        //         float dy = 0.01f + ((float)posY - lastMousePos.y);
-        //         gRadius += dx - dy;
-        // }
-
-        // lastMousePos.x = (float)posX;
-        // lastMousePos.y = (float)posY;
+        // Mouse movement handled in update()
 }
 
 void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY) {
         double fov = fpsCamera.getFOV() + deltaY * ZOOM_SENSITIVITY;
-
         fov = glm::clamp(fov, 1.0, 120.0);
-
         fpsCamera.setFOV((float)fov);
 }
 
 void update(double elapsedTime) {
         double mouseX, mouseY;
-
         glfwGetCursorPos(gWindow, &mouseX, &mouseY);
 
-        fpsCamera.rotate((float)(gWindowWidth/2.0 - mouseX) * MOUSE_SENSITIVITY, (float)(gWindowHeight/2.0 - mouseY) * MOUSE_SENSITIVITY);
+        fpsCamera.rotate(
+                (float)(gWindowWidth/2.0 - mouseX) * MOUSE_SENSITIVITY,
+                (float)(gWindowHeight/2.0 - mouseY) * MOUSE_SENSITIVITY
+        );
 
         glfwSetCursorPos(gWindow, gWindowWidth/2.0, gWindowHeight/2.0);
 
-        // Mouvement avant/arrière
+        // Movement
         if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS) {
                 fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getLook());
-        } else if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS) {
+        }
+        if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS) {
                 fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getLook());
         }
-
-        // Mouvement gauche/droite
         if (glfwGetKey(gWindow, GLFW_KEY_A) == GLFW_PRESS) {
                 fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getRight());
-        } else if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS) {
+        }
+        if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS) {
                 fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getRight());
         }
-
-        // Mouvement haut/bas (inchangé)
         if (glfwGetKey(gWindow, GLFW_KEY_SPACE) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getUp());
-        } else if (glfwGetKey(gWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getUp());
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, 1, 0));
+        }
+        if (glfwGetKey(gWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, -1, 0));
         }
 }
-
 
 void showFPS(GLFWwindow* window) {
         static double previousSeconds = 0.0;
@@ -426,7 +263,6 @@ void showFPS(GLFWwindow* window) {
                 << "Frame Time: " << msPerFrame  << " (ms)";
 
                 glfwSetWindowTitle(window, outs.str().c_str());
-
                 frameCount = 0;
         }
         frameCount++;
