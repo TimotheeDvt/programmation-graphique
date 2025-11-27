@@ -22,7 +22,7 @@ struct CubeVertex {
 };
 
 class Cube {
-	public:
+public:
 	Cube();
 	~Cube();
 
@@ -34,7 +34,7 @@ class Cube {
 	static const std::vector<CubeVertex>& getVertices();
 	static const std::vector<unsigned int>& getIndices();
 
-	private:
+private:
 	void setupMesh();
 
 	GLuint mVAO, mVBO, mEBO;
@@ -46,7 +46,7 @@ class Cube {
 };
 
 class Chunk {
-	public:
+public:
 	static const int CHUNK_SIZE = 16;
 	static const int CHUNK_HEIGHT = 16;
 
@@ -62,7 +62,7 @@ class Chunk {
 
 	glm::vec3 getWorldPosition() const { return glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE); }
 
-	private:
+private:
 	int mChunkX, mChunkZ;
 	BlockType mBlocks[CHUNK_SIZE][CHUNK_HEIGHT][CHUNK_SIZE];
 

@@ -142,68 +142,70 @@ Chunk::~Chunk() {
 }
 
 void Chunk::generate() {
-        std::mt19937 rng(mChunkX * 1000 + mChunkZ);
+        std::mt19937 rng(mChunkX * 928371 + mChunkZ * 1231237);
         std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
         for (int x = 0; x < CHUNK_SIZE; x++) {
                 for (int z = 0; z < CHUNK_SIZE; z++) {
-
                         int worldX = mChunkX * CHUNK_SIZE + x;
                         int worldZ = mChunkZ * CHUNK_SIZE + z;
 
-                        // smoother terrain
-                        float noise = (std::sin(worldX * 0.05f) + std::cos(worldZ * 0.05f)) * 0.5f;
-                        int height = 8 + (int)(noise * 4.0f);
-                        height = glm::clamp(height, 1, CHUNK_HEIGHT - 6);
+                        float h =
+                                sin(worldX * 0.05f) * 4.0f +
+                                cos(worldZ * 0.05f) * 4.0f;
 
-                        // Fill blocks
+                        int height = 16 + (int)h;      // Middle terrain height
+                        height = glm::clamp(height, 4, CHUNK_HEIGHT - 10);
+
+                        // --- Fill blocks (Minecraft-like layers) ---
                         for (int y = 0; y < CHUNK_HEIGHT; y++) {
-                                if (y == 0) {
-                                        mBlocks[x][y][z] = BlockType::STONE;
-                                } else if (y < height - 1) {
-                                        mBlocks[x][y][z] = BlockType::DIRT;
-                                } else if (y == height - 1) {
-                                        mBlocks[x][y][z] = BlockType::GRASS;
-                                } else {
+                                if (y < height - 4) {
+                                        mBlocks[x][y][z] = BlockType::STONE; // deep layer
+                                }
+                                else if (y < height - 1) {
+                                        mBlocks[x][y][z] = BlockType::DIRT; // dirt layer
+                                }
+                                else if (y == height - 1) {
+                                        mBlocks[x][y][z] = BlockType::GRASS; // surface
+                                }
+                                else {
                                         mBlocks[x][y][z] = BlockType::AIR;
                                 }
                         }
-
-                        // Redstone on top of surface
-                        if (dist(rng) < 0.05f) {
-                                mBlocks[x][height][z] = BlockType::REDSTONE;
-                        }
-
-                        // Trees
-                        if (dist(rng) < 0.02f) {
-                                int treeHeight = 4;
-
-                                // trunk
-                                for (int i = 0; i < treeHeight; i++) {
-                                        mBlocks[x][height + i][z] = BlockType::WOOD;
+                        if (dist(rng) < 0.001f) {
+                                // check if neighboring blocks are tree
+                                if (mBlocks[x][height - 1][z] != BlockType::GRASS) {
+                                        continue;
                                 }
-
-                                // leaves starting ABOVE trunk
-                                for (int lx = -2; lx <= 2; lx++) {
-                                        for (int lz = -2; lz <= 2; lz++) {
-                                                for (int ly = treeHeight; ly <= treeHeight + 2; ly++) {
-                                                        int px = x + lx;
-                                                        int py = height + ly;
-                                                        int pz = z + lz;
-
-                                                        if (px >= 0 && px < CHUNK_SIZE && pz >= 0 && pz < CHUNK_SIZE && py < CHUNK_HEIGHT) {
-                                                                if (mBlocks[px][py][pz] == BlockType::AIR) {
-                                                                        mBlocks[px][py][pz] = BlockType::LEAVES;
-                                                                }
-                                                        }
+                                for (int dx = -1; dx <= 1; dx++) {
+                                        for (int dz = -1; dz <= 1; dz++) {
+                                                if (x + dx < 0 || x + dx >= CHUNK_SIZE || z + dz < 0 || z + dz >= CHUNK_SIZE) {
+                                                        continue;
+                                                }
+                                                if (mBlocks[x + dx][height][z + dz] == BlockType::WOOD) {
+                                                        goto skip_tree; // already a tree nearby
                                                 }
                                         }
                                 }
+                                int trunkHeight = 2 + (rng() % 4);
+
+                                // Trunk (vertical)
+                                for (int i = 0; i < trunkHeight; i++) {
+                                        mBlocks[x][height + i][z] = BlockType::WOOD;
+                                }
+
+                                // Leaf blob
+                                const int topTreeBlock = height + trunkHeight - 1;
+                                mBlocks[x][topTreeBlock + 1][z] = BlockType::LEAVES;
+                                for (int lx = -2; lx <= 2; lx++) {
+                                        mBlocks[x - lx][topTreeBlock + 1][z] = BlockType::LEAVES;
+                                }
+
+                                skip_tree: ;
                         }
                 }
         }
 }
-
 
 BlockType Chunk::getBlock(int x, int y, int z) const {
         if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_SIZE) {
@@ -253,31 +255,35 @@ glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int c
 
         switch (type) {
                 case BlockType::GRASS:
-                if (normal.y > 0.5f) { // Top face
-                        u = 0.0f; v = 0.0f; // Grass top (0,0)
-                } else if (normal.y < -0.5f) { // Bottom face
-                        u = 0.5f; v = 0.0f; // Dirt (2,0)
-                } else { // Side faces
-                        u = 0.25f; v = 0.0f; // Grass side (1,0)
-                }
-                break;
+                        if (normal.y > 0.5f) { // Top face
+                                u = 0.0f; v = 0.5f; // Grass top (0,0)
+                        } else if (normal.y < -0.5f) { // Bottom face
+                                u = 0.5f; v = 0.5f; // (2,0)
+                        } else { // Side faces
+                                u = 0.25f; v = 0.5f; // (2,0)
+                        }
+                        break;
                 case BlockType::DIRT:
-                u = 0.5f; v = 0.0f; // (2,0)
-                break;
+                        u = 0.5f; v = 0.5f; // (2,0)
+                        break;
                 case BlockType::STONE:
-                u = 0.75f; v = 0.0f; // (3,0)
-                break;
+                        u = 0.75f; v = 0.5f; // (3,0)
+                        break;
                 case BlockType::REDSTONE:
-                u = 0.0f; v = 0.5f; // (0,1)
-                break;
+                        u = 0.0f; v = 0.0f; // (0,1)
+                        break;
                 case BlockType::WOOD:
-                u = 0.25f; v = 0.5f; // (1,1)
-                break;
+                        u = 0.25f; v = 0.0f; // (1,1)
+                        break;
                 case BlockType::LEAVES:
-                u = 0.5f; v = 0.5f; // (2,1)
-                break;
+                        u = 0.5f; v = 0.0f; // (2,1)
+                        break;
+                case BlockType::AIR:
+                        u = 0.75f; v = 0.0f; // (2,1)
+                        break;
                 default:
-                break;
+                        u = 0.75f; v = 0.0f; // (2,1)
+                        break;
         }
 
         // Add corner offset - each texture is 0.25 x 0.5
@@ -448,6 +454,8 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
 
         for (auto chunk : mChunks) {
                 glm::vec3 chunkPos = chunk->getWorldPosition();
+                positions.push_back(chunkPos + glm::vec3(0.0f, 0.0f, 0.0f));
+                continue;
 
                 for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
