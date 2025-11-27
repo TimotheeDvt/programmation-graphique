@@ -311,10 +311,16 @@ bool Mesh::loadMaterial(const std::string& filename) {
                         ss >> currentMaterial.diffuse.r >> currentMaterial.diffuse.g >> currentMaterial.diffuse.b;
                 } else if (cmd == "Ks") {
                         ss >> currentMaterial.specular.r >> currentMaterial.specular.g >> currentMaterial.specular.b;
+                } else if (cmd == "Ke") {
+                        ss >> currentMaterial.emissive.r >> currentMaterial.emissive.g >> currentMaterial.emissive.b;
                 } else if (cmd == "Ns") {
                         ss >> currentMaterial.shininess;
                 } else if (cmd == "d" || cmd == "Tr") {
                         ss >> currentMaterial.transparency;
+                } else if (cmd == "Ni") {
+                        ss >> currentMaterial.opticalDensity;
+                } else if (cmd == "illum") {
+                        ss >> currentMaterial.illuminationModel;
                 } else if (cmd == "map_Kd") {
                         std::string texturePath;
                         std::getline(ss, texturePath);
@@ -328,11 +334,39 @@ bool Mesh::loadMaterial(const std::string& filename) {
                                 texturePath = texturePath.substr(1);
                         currentMaterial.specularMap = texturePath;
                 } else if (cmd == "map_Bump" || cmd == "bump") {
+                        // Parser les paramètres optionnels comme -bm
+                        std::string param;
+                        while (ss >> param) {
+                                if (param == "-bm") {
+                                        ss >> currentMaterial.bumpMultiplier;
+                                } else {
+                                        // C'est le chemin de la texture
+                                        std::string restOfLine;
+                                        std::getline(ss, restOfLine);
+                                        currentMaterial.normalMap = param + restOfLine;
+                                        if (!currentMaterial.normalMap.empty() && currentMaterial.normalMap[0] == ' ')
+                                                currentMaterial.normalMap = currentMaterial.normalMap.substr(1);
+                                        break;
+                                }
+                        }
+                } else if (cmd == "map_Ns") {
                         std::string texturePath;
                         std::getline(ss, texturePath);
                         if (!texturePath.empty() && texturePath[0] == ' ')
                                 texturePath = texturePath.substr(1);
-                        currentMaterial.normalMap = texturePath;
+                        currentMaterial.roughnessMap = texturePath;
+                } else if (cmd == "map_refl") {
+                        std::string texturePath;
+                        std::getline(ss, texturePath);
+                        if (!texturePath.empty() && texturePath[0] == ' ')
+                                texturePath = texturePath.substr(1);
+                        currentMaterial.metallicMap = texturePath;
+                } else if (cmd == "map_Ke") {
+                        std::string texturePath;
+                        std::getline(ss, texturePath);
+                        if (!texturePath.empty() && texturePath[0] == ' ')
+                                texturePath = texturePath.substr(1);
+                        currentMaterial.emissiveMap = texturePath;
                 }
         }
 

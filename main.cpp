@@ -11,6 +11,58 @@
 #include "./src/Mesh.h"
 #include "./src/Scene.h"
 
+
+class TextureManager {
+private:
+        std::map<std::string, Texture2D*> textureCache;
+
+public:
+        ~TextureManager() {
+                // Nettoyer toutes les textures
+                for (auto& pair : textureCache) {
+                        delete pair.second;
+                }
+                textureCache.clear();
+        }
+
+        Texture2D* loadTexture(const std::string& filepath) {
+                if (filepath.empty()) {
+                        return nullptr;
+                }
+
+                // Vérifier si la texture est déjà chargée
+                auto it = textureCache.find(filepath);
+                if (it != textureCache.end()) {
+                        return it->second;
+                }
+
+                // Charger la nouvelle texture
+                Texture2D* newTexture = new Texture2D();
+                if (newTexture->loadTexture(filepath, true)) {
+                        textureCache[filepath] = newTexture;
+                        std::cout << "Loaded texture: " << filepath << std::endl;
+                        return newTexture;
+                } else {
+                        delete newTexture;
+                        std::cerr << "Failed to load texture: " << filepath << std::endl;
+                        return nullptr;
+                }
+        }
+
+        void bindTexture(const std::string& filepath, GLuint textureUnit) {
+                Texture2D* tex = loadTexture(filepath);
+                if (tex) {
+                        tex->bind(textureUnit);
+                }
+        }
+
+        void unbindTexture(GLuint textureUnit) {
+                glActiveTexture(GL_TEXTURE0 + textureUnit);
+                glBindTexture(GL_TEXTURE_2D, 0);
+        }
+};
+
+
 const char* APP_TITLE = "Hello Shaders";
 int gWindowWidth = 1024;
 int gWindowHeight = 768;
@@ -22,7 +74,7 @@ float cubeAngle = 0.0f;
 
 FPSCamera fpsCamera(glm::vec3(0.0f, 2.0f, 10.0f));
 const double ZOOM_SENSITIVITY = -3.0;
-const float MOVE_SPEED = 10.0; // units / sec
+const float MOVE_SPEED = 2.0; // units / sec
 const float MOUSE_SENSITIVITY = 0.1f;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
@@ -46,17 +98,26 @@ int main() {
         ShaderProgram lightingShader;
         lightingShader.loadShaders("lighting_dir.vert", "lighting_dir.frag");
 
+        ShaderProgram pbrShader;
+        pbrShader.loadShaders("lighting_pbr.vert", "lighting_pbr.frag");
+
         Scene scene;
-        const int numModels = 4;
+        const int numModels = 1;
         Mesh mesh[numModels];
-        Texture2D texture[numModels];
+
+        // Créer le gestionnaire de textures
+        TextureManager texManager;
+
+        // Charger les meshes (les textures seront chargées à la demande)
         for (int i = 0; i < numModels; ++i) {
                 mesh[i].loadObj(scene.models[i].meshFile);
-                texture[i].loadTexture(scene.models[i].textureFile, true);
         }
 
+        glm::vec3 lightPos = fpsCamera.getPosition();
+        lightPos.y -= 0.5f;
+        glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+        glm::vec3 lightDirection(0.0f, -0.9f, -0.17f);
         double lastTime = glfwGetTime();
-        float angle = 0;
 
         while (!glfwWindowShouldClose(gWindow)) {
                 showFPS(gWindow);
@@ -77,14 +138,14 @@ int main() {
                 const float aspectRatio = (float)gWindowWidth/(float)gWindowHeight;
                 projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 100.0f);
 
-                glm::vec3 viewPos;
-                viewPos.x = fpsCamera.getPosition().x;
-                viewPos.y = fpsCamera.getPosition().y;
-                viewPos.z = fpsCamera.getPosition().z;
-
-                glm::vec3 lightPos(0.0f, 1.0f, 10.0f);
-                glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+                glm::vec3 viewPos = fpsCamera.getPosition();
                 glm::vec3 lightDirection(0.0f, -0.9f, -0.17f);
+                glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
+
+                pbrShader.use();
+                pbrShader.setUniform("view", view);
+                pbrShader.setUniform("viewPos", viewPos);
+                pbrShader.setUniform("projection", projection);
 
                 lightingShader.use();
                 lightingShader.setUniform("view", view);
@@ -101,52 +162,103 @@ int main() {
                                 * glm::scale(glm::mat4(1.0f), scene.models[i].scale)
                                 * glm::rotate(glm::mat4(1.0f), glm::radians(scene.models[i].rotation.angle), scene.models[i].rotation.axis);
 
-                        lightingShader.setUniform("model", model);
+                        pbrShader.setUniform("model", model);
 
-                        // Vérifier si le mesh a des submeshes avec matériaux
+                        // Extraire le chemin de base du fichier OBJ
+                        std::string objPath = scene.models[i].meshFile;
+                        size_t lastSlash = objPath.find_last_of("/\\");
+                        std::string basePath = (lastSlash != std::string::npos) ? objPath.substr(0, lastSlash + 1) : "";
+
                         const auto& subMeshes = mesh[i].getSubMeshes();
 
                         if (subMeshes.empty()) {
-                                // Pas de matériaux, utiliser la texture par défaut
+                                // Pas de submeshes, rendu simple
                                 lightingShader.setUniform("material.ambient", glm::vec3(0.1f, 0.1f, 0.1f));
-                                lightingShader.setUniformSampler("material.diffuseMap", 0);
                                 lightingShader.setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
                                 lightingShader.setUniform("material.shininess", 32.0f);
+                                lightingShader.setUniform("material.hasNormalMap", false);
+                                lightingShader.setUniform("material.hasRoughnessMap", false);
+                                lightingShader.setUniform("material.hasMetallicMap", false);
+                                lightingShader.setUniform("material.hasEmissiveMap", false);
 
-                                texture[i].bind(0);
+                                // Utiliser la texture par défaut du modèle
+                                if (!scene.models[i].textureFile.empty()) {
+                                        texManager.bindTexture(scene.models[i].textureFile, 0);
+                                }
+                                lightingShader.setUniformSampler("material.diffuseMap", 0);
+
                                 mesh[i].draw();
-                                texture[i].unbind(0);
+                                texManager.unbindTexture(0);
                         } else {
-                                // Dessiner chaque submesh avec son matériau
+                                // Dessiner chaque submesh avec son matériau complet
                                 for (const auto& submeshPair : subMeshes) {
                                         const std::string& materialName = submeshPair.first;
-                                        const SubMesh& submesh = submeshPair.second;
-
-                                        // Récupérer les propriétés du matériau
                                         const Material* mat = mesh[i].getMaterial(materialName);
 
                                         if (mat) {
+                                                // Propriétés de base
                                                 lightingShader.setUniform("material.ambient", mat->ambient);
                                                 lightingShader.setUniform("material.specular", mat->specular);
                                                 lightingShader.setUniform("material.shininess", mat->shininess);
+                                                lightingShader.setUniform("material.bumpMultiplier", mat->bumpMultiplier);
 
-                                                // Si le matériau a une texture, la charger
-                                                // (vous devrez créer un système de cache de textures)
-                                                // Pour l'instant, utiliser la texture par défaut
+                                                // Texture diffuse (slot 0)
+                                                if (!mat->diffuseMap.empty()) {
+                                                        texManager.bindTexture(basePath + mat->diffuseMap, 0);
+                                                }
                                                 lightingShader.setUniformSampler("material.diffuseMap", 0);
-                                                texture[i].bind(0);
+
+                                                // Normal map (slot 1)
+                                                bool hasNormal = !mat->normalMap.empty();
+                                                pbrShader.setUniform("material.hasNormalMap", hasNormal);
+                                                if (hasNormal) {
+                                                        texManager.bindTexture(basePath + mat->normalMap, 1);
+                                                        pbrShader.setUniformSampler("material.normalMap", 1);
+                                                }
+
+                                                // Roughness map (slot 2)
+                                                bool hasRoughness = !mat->roughnessMap.empty();
+                                                pbrShader.setUniform("material.hasRoughnessMap", hasRoughness);
+                                                if (hasRoughness) {
+                                                        texManager.bindTexture(basePath + mat->roughnessMap, 2);
+                                                        pbrShader.setUniformSampler("material.roughnessMap", 2);
+                                                }
+
+                                                // Metallic map (slot 3)
+                                                bool hasMetallic = !mat->metallicMap.empty();
+                                                pbrShader.setUniform("material.hasMetallicMap", hasMetallic);
+                                                if (hasMetallic) {
+                                                        texManager.bindTexture(basePath + mat->metallicMap, 3);
+                                                        pbrShader.setUniformSampler("material.metallicMap", 3);
+                                                }
+
+                                                // Emissive map (slot 4)
+                                                bool hasEmissive = !mat->emissiveMap.empty();
+                                                pbrShader.setUniform("material.hasEmissiveMap", hasEmissive);
+                                                if (hasEmissive) {
+                                                        texManager.bindTexture(basePath + mat->emissiveMap, 4);
+                                                        pbrShader.setUniformSampler("material.emissiveMap", 4);
+                                                }
+
+                                                // Dessiner le submesh
+                                                mesh[i].drawSubMesh(materialName);
+
+                                                // Unbind toutes les textures
+                                                for (int slot = 0; slot < 5; ++slot) {
+                                                        texManager.unbindTexture(slot);
+                                                }
                                         } else {
                                                 // Matériau non trouvé, utiliser les valeurs par défaut
-                                                lightingShader.setUniform("material.ambient", glm::vec3(0.1f, 0.1f, 0.1f));
-                                                lightingShader.setUniformSampler("material.diffuseMap", 0);
-                                                lightingShader.setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
+                                                lightingShader.setUniform("material.ambient", glm::vec3(0.1f));
+                                                lightingShader.setUniform("material.specular", glm::vec3(0.5f));
                                                 lightingShader.setUniform("material.shininess", 32.0f);
-                                                texture[i].bind(0);
-                                        }
+                                                pbrShader.setUniform("material.hasNormalMap", false);
+                                                pbrShader.setUniform("material.hasRoughnessMap", false);
+                                                pbrShader.setUniform("material.hasMetallicMap", false);
+                                                pbrShader.setUniform("material.hasEmissiveMap", false);
 
-                                        // Dessiner ce submesh spécifique
-                                        mesh[i].drawSubMesh(materialName);
-                                        texture[i].unbind(0);
+                                                mesh[i].drawSubMesh(materialName);
+                                        }
                                 }
                         }
                 }
@@ -221,6 +333,8 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                         break;
                 case GLFW_KEY_F:
                         gFlashlightOn = !gFlashlightOn;
+                        std::cout << "Flashlight " << (gFlashlightOn ? "ON" : "OFF") << std::endl;
+                        break;
                 default:
                         break;
         }

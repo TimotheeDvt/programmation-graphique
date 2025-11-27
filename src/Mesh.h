@@ -17,12 +17,23 @@ struct Material {
         glm::vec3 ambient = glm::vec3(0.2f);
         glm::vec3 diffuse = glm::vec3(0.8f);
         glm::vec3 specular = glm::vec3(1.0f);
-        float shininess = 32.0f;
-        float transparency = 1.0f;
+        glm::vec3 emissive = glm::vec3(0.0f); // Ke
 
-        std::string diffuseMap;
-        std::string specularMap;
-        std::string normalMap;
+        float shininess = 32.0f;
+        float transparency = 1.0f; // d
+        float opticalDensity = 1.5f; // Ni (index of refraction)
+        int illuminationModel = 2; // illum
+
+        // Textures
+        std::string diffuseMap;      // map_Kd
+        std::string specularMap;     // map_Ks
+        std::string normalMap;       // map_Bump / bump
+        std::string roughnessMap;    // map_Ns (nouveau)
+        std::string metallicMap;     // map_refl (nouveau)
+        std::string emissiveMap;     // map_Ke
+
+        // Paramètres de bump mapping
+        float bumpMultiplier = 1.0f; // -bm parameter
 };
 
 struct SubMesh {
