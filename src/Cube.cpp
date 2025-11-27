@@ -172,36 +172,52 @@ void Chunk::generate() {
                                         mBlocks[x][y][z] = BlockType::AIR;
                                 }
                         }
-                        if (dist(rng) < 0.001f) {
-                                // check if neighboring blocks are tree
+
+                        if (dist(rng) < 0.01f && height + 1 < CHUNK_HEIGHT - 1) {
+                                mBlocks[x][height + 1][z] = BlockType::REDSTONE;
+                        }
+
+                        if (dist(rng) < 0.01f && height < CHUNK_HEIGHT - 7) {  // 3% chance, need room for tree
+                                // Check if this position has grass
                                 if (mBlocks[x][height - 1][z] != BlockType::GRASS) {
                                         continue;
                                 }
-                                for (int dx = -1; dx <= 1; dx++) {
-                                        for (int dz = -1; dz <= 1; dz++) {
-                                                if (x + dx < 0 || x + dx >= CHUNK_SIZE || z + dz < 0 || z + dz >= CHUNK_SIZE) {
-                                                        continue;
-                                                }
-                                                if (mBlocks[x + dx][height][z + dz] == BlockType::WOOD) {
-                                                        goto skip_tree; // already a tree nearby
+
+                                // Check for nearby trees to avoid clumping
+                                bool hasNearbyTree = false;
+                                for (int dx = -3; dx <= 3; dx++) {
+                                        for (int dz = -3; dz <= 3; dz++) {
+                                                if (dx == 0 && dz == 0) continue;
+
+                                                int checkX = x + dx;
+                                                int checkZ = z + dz;
+
+                                                if (checkX >= 0 && checkX < CHUNK_SIZE && checkZ >= 0 && checkZ < CHUNK_SIZE) {
+                                                        // Check if there's wood at or above ground level
+                                                        if (mBlocks[checkX][height][checkZ] == BlockType::WOOD || mBlocks[checkX][height + 1][checkZ] == BlockType::WOOD) {
+                                                                hasNearbyTree = true;
+                                                                break;
+                                                        }
                                                 }
                                         }
-                                }
-                                int trunkHeight = 2 + (rng() % 4);
-
-                                // Trunk (vertical)
-                                for (int i = 0; i < trunkHeight; i++) {
-                                        mBlocks[x][height + i][z] = BlockType::WOOD;
+                                        if (hasNearbyTree) break;
                                 }
 
-                                // Leaf blob
-                                const int topTreeBlock = height + trunkHeight - 1;
-                                mBlocks[x][topTreeBlock + 1][z] = BlockType::LEAVES;
-                                for (int lx = -2; lx <= 2; lx++) {
-                                        mBlocks[x - lx][topTreeBlock + 1][z] = BlockType::LEAVES;
+                                if (hasNearbyTree) continue;
+
+                                // Generate tree
+                                int trunkHeight = 4 + (rng() % 2);  // 4-5 blocks tall
+
+                                // Build trunk
+                                for (int ty = 0; ty < trunkHeight; ty++) {
+                                        if (height + ty < CHUNK_HEIGHT) {
+                                                mBlocks[x][height + ty][z] = BlockType::WOOD;
+                                        }
                                 }
 
-                                skip_tree: ;
+                                // Build leaves (3D spherical blob)
+                                int leafTop = height + trunkHeight;
+                                mBlocks[x][leafTop][z] = BlockType::LEAVES;
                         }
                 }
         }
@@ -294,8 +310,8 @@ glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int c
 }
 
 void Chunk::addFace(int x, int y, int z, const glm::vec3& normal, BlockType type) {
-        glm::vec3 worldPos = glm::vec3(x, y, z);
-
+        glm::vec3 chunkWorldPos = glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE);
+        glm::vec3 worldPos = chunkWorldPos + glm::vec3(x, y, z);
         // Define the four corners of the face based on normal direction
         glm::vec3 corners[4];
 
@@ -454,14 +470,12 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
 
         for (auto chunk : mChunks) {
                 glm::vec3 chunkPos = chunk->getWorldPosition();
-                positions.push_back(chunkPos + glm::vec3(0.0f, 0.0f, 0.0f));
-                continue;
 
                 for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
-                                                positions.push_back(chunkPos + glm::vec3(x, y, z));
+                                                positions.push_back(chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f));
                                         }
                                 }
                         }
