@@ -16,18 +16,30 @@ int gWindowHeight = 720;
 GLFWwindow* gWindow = NULL;
 bool gWireframe = false;
 
-FPSCamera fpsCamera(glm::vec3(0.0f, 10.0f, 20.0f));
+FPSCamera fpsCamera(glm::vec3(0.0f, 20.0f, 20.0f));
 const double ZOOM_SENSITIVITY = -3.0;
-const float MOVE_SPEED = 8.0;
+float MOVE_SPEED = 8.0;
 const float MOUSE_SENSITIVITY = 0.1f;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
 void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height);
 void glfw_onMouseMove(GLFWwindow* window, double posX, double posY);
+void glfw_onMouseButton(GLFWwindow* window, int button, int action, int mods);
 void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY);
 void update(double elapsedTime);
 void showFPS(GLFWwindow* window);
 bool initOpenGL();
+RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float step = 0.05f);
+void drawCrosshair();
+void initCrosshair();
+void cleanupCrosshair();
+
+World world;
+BlockType gSelectedBlock = BlockType::STONE;
+
+GLuint crosshairVAO = 0;
+GLuint crosshairVBO = 0;
+ShaderProgram* crosshairShader = nullptr;
 
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
@@ -36,6 +48,7 @@ int main() {
                 std::cerr << "OpenGL initialization failed" << std::endl;
                 return -1;
         }
+        initCrosshair();
 
         // Load shaders
         ShaderProgram minecraftShader;
@@ -46,8 +59,7 @@ int main() {
         blockTexture.loadTexture("./textures/blocks.png", true);
 
         // Generate world
-        World world;
-        world.generate(4); // 4 chunk render distance
+        world.generate(1); // 4 chunk render distance
 
         std::cout << "World generated successfully!" << std::endl;
 
@@ -88,7 +100,7 @@ int main() {
                 // Directional light (sun)
                 glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
                 minecraftShader.setUniform("dirLight.direction", sunDirection);
-                minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f));
+                minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.5f);
                 minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f));
                 minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f));
 
@@ -100,7 +112,7 @@ int main() {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
 
                         minecraftShader.setUniform((base + ".position").c_str(), redstoneLights[i]);
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.1f, 0.0f, 0.0f));
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(1.0f, 0.0f, 0.0f));
                         minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
                         minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(1.0f, 0.2f, 0.2f));
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
@@ -119,10 +131,12 @@ int main() {
                 world.draw();
                 blockTexture.unbind(0);
 
+                drawCrosshair();
+
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;
         }
-
+        cleanupCrosshair();
         glfwTerminate();
         return 0;
 }
@@ -151,6 +165,7 @@ bool initOpenGL() {
         glfwSetKeyCallback(gWindow, glfw_onkey);
         glfwSetFramebufferSizeCallback(gWindow, glfw_onFrameBufferSize);
         glfwSetCursorPosCallback(gWindow, glfw_onMouseMove);
+        glfwSetMouseButtonCallback(gWindow, glfw_onMouseButton);
         glfwSetScrollCallback(gWindow, glfw_onMouseScroll);
 
         glfwSetInputMode(gWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -179,18 +194,24 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
 
         switch (key){
                 case GLFW_KEY_ESCAPE:
-                glfwSetWindowShouldClose(window, GL_TRUE);
-                break;
+                        glfwSetWindowShouldClose(window, GL_TRUE);
+                        break;
                 case GLFW_KEY_1:
-                gWireframe = !gWireframe;
-                if (gWireframe) {
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                } else {
-                        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                }
-                break;
+                        gWireframe = !gWireframe;
+                        if (gWireframe) {
+                                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                        } else {
+                                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                        }
+                        break;
+                case GLFW_KEY_2:         // select stone
+                        gSelectedBlock = BlockType::STONE;
+                        break;
+                case GLFW_KEY_3:         // select dirt
+                        gSelectedBlock = BlockType::DIRT;
+                        break;
                 default:
-                break;
+                        break;
         }
 }
 
@@ -210,6 +231,35 @@ void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY) {
         fpsCamera.setFOV((float)fov);
 }
 
+void glfw_onMouseButton(GLFWwindow* window, int button, int action, int mods) {
+        if (action != GLFW_PRESS) return;
+
+        glm::vec3 origin = fpsCamera.getPosition();
+        glm::vec3 dir    = glm::normalize(fpsCamera.getLook());
+
+        RaycastHit hit = raycastWorld(world, origin, dir, 16.0f);
+
+        if (!hit.hit) return;
+
+        if (button == GLFW_MOUSE_BUTTON_LEFT) {
+                // Break block
+                world.setBlockAt(hit.blockPos, BlockType::AIR);
+        } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+                // Place block on the face we hit: adjacent cell along normal
+                glm::vec3 placePos = hit.blockPos + hit.normal;
+
+                // Simple support check for torches: require solid below if placing torch
+                if (gSelectedBlock == BlockType::TORCH) {
+                        glm::vec3 below = placePos + glm::vec3(0,-1,0);
+                        BlockType support = world.getBlockAt(below);
+                        if (!world.setBlockAt(placePos, BlockType::TORCH))return;
+                } else {
+                        world.setBlockAt(placePos, gSelectedBlock);
+                }
+        }
+}
+
+
 void update(double elapsedTime) {
         double mouseX, mouseY;
         glfwGetCursorPos(gWindow, &mouseX, &mouseY);
@@ -222,6 +272,13 @@ void update(double elapsedTime) {
         glfwSetCursorPos(gWindow, gWindowWidth/2.0, gWindowHeight/2.0);
 
         // Movement
+        // if control is pressed, increase speed
+        if (glfwGetKey(gWindow, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
+                MOVE_SPEED = 20.0f;
+        } else {
+                MOVE_SPEED = 8.0f;
+        }
+
         if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS) {
                 fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getLook());
         }
@@ -266,4 +323,173 @@ void showFPS(GLFWwindow* window) {
                 frameCount = 0;
         }
         frameCount++;
+}
+
+RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float stepSize) {
+        RaycastHit res{};
+        res.hit = false;
+
+        // Current voxel position
+        glm::ivec3 voxel = glm::ivec3(glm::floor(origin));
+
+        // Direction to step in each axis (-1, 0, or 1)
+        glm::ivec3 stepDir = glm::ivec3(
+                dir.x > 0 ? 1 : (dir.x < 0 ? -1 : 0),
+                dir.y > 0 ? 1 : (dir.y < 0 ? -1 : 0),
+                dir.z > 0 ? 1 : (dir.z < 0 ? -1 : 0)
+        );
+
+        // Distance to next voxel boundary along each axis
+        glm::vec3 tDelta = glm::vec3(
+                stepDir.x != 0 ? 1.0f / std::abs(dir.x) : FLT_MAX,
+                stepDir.y != 0 ? 1.0f / std::abs(dir.y) : FLT_MAX,
+                stepDir.z != 0 ? 1.0f / std::abs(dir.z) : FLT_MAX
+        );
+
+        // Distance along ray to next voxel boundary
+        glm::vec3 tMax;
+
+        // Calculate initial tMax for each axis
+        if (stepDir.x > 0)
+                tMax.x = (std::floor(origin.x) + 1.0f - origin.x) / std::abs(dir.x);
+        else if (stepDir.x < 0)
+                tMax.x = (origin.x - std::floor(origin.x)) / std::abs(dir.x);
+        else
+                tMax.x = FLT_MAX;
+
+        if (stepDir.y > 0) {
+                tMax.y = (std::floor(origin.y) + 1.0f - origin.y) / std::abs(dir.y);
+        } else if (stepDir.y < 0) {
+                tMax.y = (origin.y - std::floor(origin.y)) / -std::abs(dir.y);
+        } else {
+                tMax.y = FLT_MAX;
+        }
+
+        if (stepDir.z > 0) {
+                tMax.z = (std::floor(origin.z) + 1.0f - origin.z) / std::abs(dir.z);
+        } else if (stepDir.z < 0) {
+                tMax.z = (origin.z - std::floor(origin.z)) / -std::abs(dir.z);
+        } else {
+                tMax.z = FLT_MAX;
+        }
+
+        float t = 0.0f;
+        glm::ivec3 normal = glm::ivec3(0, 0, 0);
+
+        // DDA traversal
+        while (t < maxDist) {
+                // Check current voxel (integer world coords)
+                BlockType bt = world.getBlock(voxel.x, voxel.y, voxel.z);
+
+                if (bt != BlockType::AIR) {
+                        res.hit = true;
+                        res.blockPos = glm::vec3(voxel);
+                        res.hitPos   = origin + dir * t;
+                        res.normal   = glm::vec3(normal);
+                        return res;
+                }
+
+                // Step to next voxel boundary
+                if (tMax.x < tMax.y) {
+                        if (tMax.x < tMax.z) {
+                                // X is closest
+                                t = tMax.x;
+                                tMax.x += tDelta.x;
+                                voxel.x += stepDir.x;
+                                normal = glm::ivec3(-stepDir.x, 0, 0);
+                        } else {
+                                // Z is closest
+                                t = tMax.z;
+                                tMax.z += tDelta.z;
+                                voxel.z += stepDir.z;
+                                normal = glm::ivec3(0, 0, -stepDir.z);
+                        }
+                } else {
+                        if (tMax.y < tMax.z) {
+                                // Y is closest
+                                t = tMax.y;
+                                tMax.y += tDelta.y;
+                                voxel.y += stepDir.y;
+                                normal = glm::ivec3(0, -stepDir.y, 0);
+                        } else {
+                                // Z is closest
+                                t = tMax.z;
+                                tMax.z += tDelta.z;
+                                voxel.z += stepDir.z;
+                                normal = glm::ivec3(0, 0, -stepDir.z);
+                        }
+                }
+        }
+
+        std::cout << "Raycast: no hit within max distance" << std::endl;
+        return res;
+}
+
+void drawCrosshair() {
+        if (crosshairShader == nullptr) return;
+
+        float centerX = gWindowWidth / 2.0f;
+        float centerY = gWindowHeight / 2.0f;
+        float size = 10.0f; // crosshair arm length in pixels
+        float gap = 3.0f;   // gap from center
+
+        GLfloat verts[] = {
+                // Horizontal line (left)
+                centerX - size - gap, centerY, 0.0f,
+                centerX - gap, centerY, 0.0f,
+                // Horizontal line (right)
+                centerX + gap, centerY, 0.0f,
+                centerX + size + gap, centerY, 0.0f,
+                // Vertical line (top)
+                centerX, centerY + gap, 0.0f,
+                centerX, centerY + size + gap, 0.0f,
+                // Vertical line (bottom)
+                centerX, centerY - gap, 0.0f,
+                centerX, centerY - size - gap, 0.0f
+        };
+
+        glBindVertexArray(crosshairVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, crosshairVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+        // Use orthographic projection for 2D overlay
+        glm::mat4 ortho = glm::ortho(0.0f, (float)gWindowWidth, 0.0f, (float)gWindowHeight);
+
+        crosshairShader->use();
+        crosshairShader->setUniform("projection", ortho);
+
+        glDisable(GL_DEPTH_TEST);
+        glLineWidth(2.0f);
+        glBindVertexArray(crosshairVAO);
+        glDrawArrays(GL_LINES, 0, 8);
+        glEnable(GL_DEPTH_TEST);
+}
+
+// Add this initialization function
+void initCrosshair() {
+        // Create shader
+        crosshairShader = new ShaderProgram();
+        crosshairShader->loadShaders("./crosshair.vert", "./crosshair.frag");
+
+        // Setup VAO/VBO
+        glGenVertexArrays(1, &crosshairVAO);
+        glGenBuffers(1, &crosshairVBO);
+
+        glBindVertexArray(crosshairVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, crosshairVBO);
+
+        // Allocate buffer (we'll update it each frame)
+        glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, nullptr, GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glBindVertexArray(0);
+}
+
+// Add cleanup function
+void cleanupCrosshair() {
+        if (crosshairVAO) glDeleteVertexArrays(1, &crosshairVAO);
+        if (crosshairVBO) glDeleteBuffers(1, &crosshairVBO);
+        if (crosshairShader) delete crosshairShader;
 }

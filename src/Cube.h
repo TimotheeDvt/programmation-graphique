@@ -12,7 +12,8 @@ enum class BlockType {
 	STONE,
 	REDSTONE,
 	WOOD,
-	LEAVES
+	LEAVES,
+	TORCH
 };
 
 struct CubeVertex {
@@ -48,7 +49,7 @@ private:
 class Chunk {
 public:
 	static const int CHUNK_SIZE = 16;
-	static const int CHUNK_HEIGHT = 16;
+	static const int CHUNK_HEIGHT = 64;
 
 	Chunk(int chunkX, int chunkZ);
 	~Chunk();
@@ -71,13 +72,22 @@ private:
 	int mVertexCount;
 
 	bool isSolidBlock(BlockType type) const;
+	bool isFullBlock(BlockType type) const;
 	bool shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const;
 	void addFace(int x, int y, int z, const glm::vec3& normal, BlockType type);
+    void addTorchMesh(int x, int y, int z);
 	glm::vec2 getTextureCoords(BlockType type, const glm::vec3& normal, int corner);
 };
 
+struct RaycastHit {
+    bool hit;
+    glm::vec3 blockPos;   // integer coords of hit block
+    glm::vec3 hitPos;     // exact position
+    glm::vec3 normal;     // face normal
+};
+
 class World {
-	public:
+public:
 	World();
 	~World();
 
@@ -86,8 +96,26 @@ class World {
 
 	std::vector<glm::vec3> getRedstoneLightPositions() const;
 
-	private:
+    bool setBlockAt(const glm::vec3& worldPos, BlockType type); // <--- NEW
+    BlockType getBlockAt(const glm::vec3& worldPos) const;      // <--- NEW
+
+	// Block interaction
+	RaycastHit raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance = 5.0f);
+	bool breakBlock(const glm::vec3& origin, const glm::vec3& direction);
+	bool placeBlock(const glm::vec3& origin, const glm::vec3& direction, BlockType type);
+
+	BlockType getBlock(int x, int y, int z) const;
+	void setBlock(int x, int y, int z, BlockType type);
+	BlockType getBlock2(int x, int y, int z) const;
+	void localToChunkCoords(int worldX, int worldY, int worldZ,
+                        int& chunkX, int& chunkZ,
+                        int& localX, int& localY, int& localZ) const;
+
+private:
 	std::vector<Chunk*> mChunks;
+
+	Chunk* getChunkAt(int x, int z);
+	Chunk* findChunk(int chunkX, int chunkZ) const;
 };
 
 #endif // CUBE_H

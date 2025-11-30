@@ -230,6 +230,28 @@ BlockType Chunk::getBlock(int x, int y, int z) const {
         return mBlocks[x][y][z];
 }
 
+void World::localToChunkCoords(int worldX, int worldY, int worldZ,
+                               int& chunkX, int& chunkZ,
+                               int& localX, int& localY, int& localZ) const
+{
+        chunkX = (worldX >= 0) ? worldX / Chunk::CHUNK_SIZE
+                                : (worldX + 1) / Chunk::CHUNK_SIZE - 1;
+        chunkZ = (worldZ >= 0) ? worldZ / Chunk::CHUNK_SIZE
+                                : (worldZ + 1) / Chunk::CHUNK_SIZE - 1;
+
+        localX = worldX - chunkX * Chunk::CHUNK_SIZE;
+        localZ = worldZ - chunkZ * Chunk::CHUNK_SIZE;
+        localY = worldY; // you store Y directly
+}
+
+BlockType World::getBlock(int x, int y, int z) const {
+    int chunkX, chunkZ, localX, localY, localZ;
+    localToChunkCoords(x, y, z, chunkX, chunkZ, localX, localY, localZ);
+    Chunk* chunk = const_cast<World*>(this)->findChunk(chunkX, chunkZ);
+    if (!chunk) return BlockType::AIR;
+    return chunk->getBlock(localX, localY, localZ);
+}
+
 void Chunk::setBlock(int x, int y, int z, BlockType type) {
         if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_HEIGHT && z >= 0 && z < CHUNK_SIZE) {
                 mBlocks[x][y][z] = type;
@@ -240,12 +262,18 @@ bool Chunk::isSolidBlock(BlockType type) const {
         return type != BlockType::AIR;
 }
 
+bool Chunk::isFullBlock(BlockType type) const {
+        // Torch is solid (collidable / occupies space logically) but not a full cube mesh
+        if (type == BlockType::TORCH) return false;
+        return type != BlockType::AIR;
+}
+
 bool Chunk::shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const {
         BlockType neighbor = getBlock(x + nx, y + ny, z + nz);
-        BlockType current = getBlock(x, y, z);
+        BlockType current  = getBlock(x, y, z);
 
-        // Don't render if neighbor is solid (except for leaves)
-        if (isSolidBlock(neighbor) && neighbor != BlockType::LEAVES) {
+        // Don't render if neighbor is a full block (except for leaves)
+        if (isFullBlock(neighbor) && neighbor != BlockType::LEAVES) {
                 return false;
         }
 
@@ -296,6 +324,9 @@ glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int c
                         break;
                 case BlockType::AIR:
                         u = 0.75f; v = 0.0f; // (2,1)
+                        break;
+                case BlockType::TORCH:
+                        u = 0.5f; v = 0.0f; // (2,1)
                         break;
                 default:
                         u = 0.75f; v = 0.0f; // (2,1)
@@ -393,8 +424,14 @@ void Chunk::buildMesh() {
                 for (int y = 0; y < CHUNK_HEIGHT; y++) {
                         for (int z = 0; z < CHUNK_SIZE; z++) {
                                 BlockType type = getBlock(x, y, z);
-                                if (!isSolidBlock(type)) continue;
+                                if (type == BlockType::AIR) continue;
 
+                                if (type == BlockType::TORCH) {
+                                        addTorchMesh(x, y, z);
+                                        continue;
+                                }
+
+                                if (!isFullBlock(type)) continue;
                                 // Check each face
                                 if (shouldRenderFace(x, y, z, 0, 0, 1))  addFace(x, y, z, glm::vec3( 0,  0,  1), type);
                                 if (shouldRenderFace(x, y, z, 0, 0, -1)) addFace(x, y, z, glm::vec3( 0,  0, -1), type);
@@ -429,6 +466,69 @@ void Chunk::buildMesh() {
 
         glBindVertexArray(0);
 }
+
+void Chunk::addTorchMesh(int x, int y, int z) {
+        glm::vec3 chunkWorldPos = glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE);
+        glm::vec3 worldPos = chunkWorldPos + glm::vec3(x + 0.5f, y, z + 0.5f); // center in block
+
+        float radius = 0.15f;
+        float baseY  = 0.0f;
+        float topY   = 0.7f;
+
+        struct Quad { glm::vec3 p[4]; glm::vec3 normal; };
+
+        Quad quads[2];
+
+        // Diagonal in XZ: (-r,0,-r) .. (r,0,r)
+        quads[0].p[0] = worldPos + glm::vec3(-radius, baseY, -radius);
+        quads[0].p[1] = worldPos + glm::vec3( radius, baseY,  radius);
+        quads[0].p[2] = worldPos + glm::vec3( radius, topY,  radius);
+        quads[0].p[3] = worldPos + glm::vec3(-radius, topY, -radius);
+        quads[0].normal = glm::normalize(glm::vec3(1, 0, 1));
+
+        // Other diagonal: (-r,0,r) .. (r,0,-r)
+        quads[1].p[0] = worldPos + glm::vec3(-radius, baseY,  radius);
+        quads[1].p[1] = worldPos + glm::vec3( radius, baseY, -radius);
+        quads[1].p[2] = worldPos + glm::vec3( radius, topY, -radius);
+        quads[1].p[3] = worldPos + glm::vec3(-radius, topY,  radius);
+        quads[1].normal = glm::normalize(glm::vec3(1, 0,-1));
+
+        for (int q = 0; q < 2; ++q) {
+                glm::vec3 n = quads[q].normal;
+
+                CubeVertex v[6];
+
+                // Triangle 1: 0,1,2
+                v[0].position = quads[q].p[0];
+                v[0].normal   = n;
+                v[0].texCoords = getTextureCoords(BlockType::TORCH, n, 0);
+
+                v[1].position = quads[q].p[1];
+                v[1].normal   = n;
+                v[1].texCoords = getTextureCoords(BlockType::TORCH, n, 1);
+
+                v[2].position = quads[q].p[2];
+                v[2].normal   = n;
+                v[2].texCoords = getTextureCoords(BlockType::TORCH, n, 2);
+
+                // Triangle 2: 0,2,3
+                v[3].position = quads[q].p[0];
+                v[3].normal   = n;
+                v[3].texCoords = getTextureCoords(BlockType::TORCH, n, 0);
+
+                v[4].position = quads[q].p[2];
+                v[4].normal   = n;
+                v[4].texCoords = getTextureCoords(BlockType::TORCH, n, 2);
+
+                v[5].position = quads[q].p[3];
+                v[5].normal   = n;
+                v[5].texCoords = getTextureCoords(BlockType::TORCH, n, 3);
+
+                for (int i = 0; i < 6; ++i)
+                        mVertices.push_back(v[i]);
+        }
+}
+
 
 void Chunk::draw() {
         if (mVertexCount == 0) return;
@@ -465,6 +565,53 @@ void World::draw() {
         }
 }
 
+Chunk* World::findChunk(int chunkX, int chunkZ) const {
+        for (auto chunk : mChunks) {
+                glm::vec3 pos = chunk->getWorldPosition(); // returns (chunkX*CHUNK_SIZE,0,chunkZ*CHUNK_SIZE)
+                int cx = (int)(pos.x / Chunk::CHUNK_SIZE);
+                int cz = (int)(pos.z / Chunk::CHUNK_SIZE);
+                if (cx == chunkX && cz == chunkZ) return chunk;
+        }
+        return nullptr;
+}
+
+BlockType World::getBlockAt(const glm::vec3& worldPos) const {
+        int wx = (int)floor(worldPos.x);
+        int wy = (int)floor(worldPos.y);
+        int wz = (int)floor(worldPos.z);
+
+        int chunkX = (int)floor((float)wx / Chunk::CHUNK_SIZE);
+        int chunkZ = (int)floor((float)wz / Chunk::CHUNK_SIZE);
+
+        Chunk* chunk = findChunk(chunkX, chunkZ);
+        if (!chunk) return BlockType::AIR;
+
+        int localX = wx - chunkX * Chunk::CHUNK_SIZE;
+        int localZ = wz - chunkZ * Chunk::CHUNK_SIZE;
+        return chunk->getBlock(localX, wy, localZ);
+}
+
+bool World::setBlockAt(const glm::vec3& worldPos, BlockType type) {
+        int wx = (int)floor(worldPos.x);
+        int wy = (int)floor(worldPos.y);
+        int wz = (int)floor(worldPos.z);
+
+        if (wy < 0 || wy >= Chunk::CHUNK_HEIGHT) return false;
+
+        int chunkX = (int)floor((float)wx / Chunk::CHUNK_SIZE);
+        int chunkZ = (int)floor((float)wz / Chunk::CHUNK_SIZE);
+
+        Chunk* chunk = findChunk(chunkX, chunkZ);
+        if (!chunk) return false;
+
+        int localX = wx - chunkX * Chunk::CHUNK_SIZE;
+        int localZ = wz - chunkZ * Chunk::CHUNK_SIZE;
+
+        chunk->setBlock(localX, wy, localZ, type);
+        chunk->buildMesh();            // rebuild only that chunk
+        return true;
+}
+
 std::vector<glm::vec3> World::getRedstoneLightPositions() const {
         std::vector<glm::vec3> positions;
 
@@ -475,7 +622,7 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
-                                                positions.push_back(chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f));
+                                                positions.push_back(chunkPos + glm::vec3(x, y, z));
                                         }
                                 }
                         }
