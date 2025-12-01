@@ -47,6 +47,13 @@ GLuint crosshairVAO = 0;
 GLuint crosshairVBO = 0;
 ShaderProgram* crosshairShader = nullptr;
 
+// Debug line (camera look vector)
+GLuint debugLineVAO = 0;
+GLuint debugLineVBO = 0;
+ShaderProgram* debugLineShader = nullptr;
+GLuint debugPointVAO = 0;
+GLuint debugPointVBO = 0;
+
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
 
@@ -55,6 +62,28 @@ int main() {
                 return -1;
         }
         initCrosshair();
+
+        // Init debug line shader + buffers
+        debugLineShader = new ShaderProgram();
+        debugLineShader->loadShaders("./debug_line.vert", "./debug_line.frag");
+        glGenVertexArrays(1, &debugLineVAO);
+        glGenBuffers(1, &debugLineVBO);
+        glBindVertexArray(debugLineVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
+        // allocate for 2 vec3 positions
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6, nullptr, GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+        // point VAO/VBO (single vec3)
+        glGenVertexArrays(1, &debugPointVAO);
+        glGenBuffers(1, &debugPointVBO);
+        glBindVertexArray(debugPointVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, debugPointVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3, nullptr, GL_DYNAMIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
 
         // Load shaders
         ShaderProgram minecraftShader;
@@ -136,6 +165,68 @@ int main() {
                 blockTexture.bind(0);
                 world.draw();
                 blockTexture.unbind(0);
+
+                // Draw debug look vector and current hit markers
+                {
+                        glm::vec3 origin = fpsCamera.getPosition();
+                        glm::vec3 dir = glm::normalize(fpsCamera.getLook());
+
+                        // perform a frame raycast so we can draw the actual hit point
+                        RaycastHit frameHit = raycastWorld(world, origin, dir, 16.0f);
+
+                        glm::vec3 end;
+                        if (frameHit.hit) {
+                                end = frameHit.hitPos;
+                        } else {
+                                float len = 8.0f;
+                                end = origin + dir * len;
+                        }
+
+                        float lineVerts[6] = { origin.x, origin.y, origin.z, end.x, end.y, end.z };
+
+                        glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
+                        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(lineVerts), lineVerts);
+
+                        debugLineShader->use();
+                        debugLineShader->setUniform("model", glm::mat4(1.0f));
+                        debugLineShader->setUniform("view", fpsCamera.getViewMatrix());
+                        float fov = fpsCamera.getFOV();
+                        float aspectRatio = (float)gWindowWidth / (float)gWindowHeight;
+                        glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 200.0f);
+                        debugLineShader->setUniform("projection", projection);
+
+                        // Draw on top
+                        glDisable(GL_DEPTH_TEST);
+
+                        // Line (red)
+                        debugLineShader->setUniform("uColor", glm::vec3(1.0f, 0.0f, 0.0f));
+                        glBindVertexArray(debugLineVAO);
+                        glLineWidth(4.0f);
+                        glDrawArrays(GL_LINES, 0, 2);
+
+                        // If we have a hit, draw the exact hit position (green) and the voxel center (cyan)
+                        if (frameHit.hit) {
+                                // green: exact sampled hit position
+                                float hitPt[3] = { frameHit.hitPos.x, frameHit.hitPos.y, frameHit.hitPos.z };
+                                glBindBuffer(GL_ARRAY_BUFFER, debugPointVBO);
+                                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(hitPt), hitPt);
+                                debugLineShader->setUniform("uColor", glm::vec3(0.0f, 1.0f, 0.0f));
+                                glBindVertexArray(debugPointVAO);
+                                glPointSize(12.0f);
+                                glDrawArrays(GL_POINTS, 0, 1);
+
+                                // cyan: targeted voxel center
+                                glm::vec3 voxelCenter = frameHit.blockPos + glm::vec3(0.5f);
+                                float voxelPt[3] = { voxelCenter.x, voxelCenter.y, voxelCenter.z };
+                                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(voxelPt), voxelPt);
+                                debugLineShader->setUniform("uColor", glm::vec3(0.0f, 1.0f, 1.0f));
+                                glPointSize(14.0f);
+                                glDrawArrays(GL_POINTS, 0, 1);
+                        }
+
+                        glBindVertexArray(0);
+                        glEnable(GL_DEPTH_TEST);
+                }
 
                 drawCrosshair();
 
@@ -370,114 +461,55 @@ void showFPS(GLFWwindow* window) {
 }
 
 RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float stepSize) {
-        // Voxel Ray Traversal (DDA) Algorithm
+        // Simple ray-marching algorithm using the provided stepSize. This is
+        // less optimal than a full DDA but aligns better with a visual sample
+        // (origin + dir * t) and avoids subtle off-by-one boundary issues.
 
         RaycastHit hit;
         hit.hit = false;
 
-        // 1. Setup Initial State
+        if (stepSize <= 0.0f) stepSize = 0.05f;
 
-        // Current block position (integer coordinates)
-        glm::ivec3 mapPos = glm::floor(origin);
+        float t = 0.0f;
+        glm::ivec3 previousVoxel = glm::floor(origin + glm::vec3(0.5f));
 
-        // Direction (step) for each axis (+1 or -1)
-        glm::ivec3 step;
-        step.x = (dir.x >= 0) ? 1 : -1;
-        step.y = (dir.y >= 0) ? 1 : -1;
-        step.z = (dir.z >= 0) ? 1 : -1;
+        // march along the ray
+        while (t <= maxDist) {
+                t += stepSize;
+                glm::vec3 pos = origin + dir * t;
+                glm::ivec3 voxel = glm::floor(pos + glm::vec3(0.5f));
 
-        // tDelta: distance ray has to travel to cross one unit of X, Y, or Z (block size)
-        glm::vec3 tDelta;
-        // Handle division by zero for axis-aligned rays by setting tDelta to infinity
-        tDelta.x = (dir.x == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(1.0f / dir.x);
-        tDelta.y = (dir.y == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(1.0f / dir.y);
-        tDelta.z = (dir.z == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(1.0f / dir.z);
+                // If voxel changed since last step, check for block
+                if (voxel.x != previousVoxel.x || voxel.y != previousVoxel.y || voxel.z != previousVoxel.z) {
+                        // If this voxel contains a solid block, report hit
+                        if (world.getBlockAt(glm::vec3(voxel)) != BlockType::AIR) {
+                                hit.hit = true;
+                                hit.blockPos = glm::vec3(voxel);
+                                hit.hitPos = pos;
 
-        // tMax: distance ray has traveled to hit the next block boundary in each axis
-        glm::vec3 tMax;
+                                glm::ivec3 stepDir = voxel - previousVoxel;
+                                glm::ivec3 normal(0);
+                                if (stepDir.x != 0 || stepDir.y != 0 || stepDir.z != 0) {
+                                        normal = -stepDir; // face normal is opposite to movement into voxel
+                                } else {
+                                        // Fallback: find nearest face based on local position
+                                        glm::vec3 local = pos - glm::vec3(voxel);
+                                        float dx = std::min(local.x, 1.0f - local.x);
+                                        float dy = std::min(local.y, 1.0f - local.y);
+                                        float dz = std::min(local.z, 1.0f - local.z);
+                                        if (dx <= dy && dx <= dz) normal = glm::ivec3((local.x < 0.5f) ? -1 : 1, 0, 0);
+                                        else if (dy <= dx && dy <= dz) normal = glm::ivec3(0, (local.y < 0.5f) ? -1 : 1, 0);
+                                        else normal = glm::ivec3(0, 0, (local.z < 0.5f) ? -1 : 1);
+                                }
 
-        // Calculate initial tMax for each axis
-        auto fracX = origin.x - mapPos.x;
-        auto fracY = origin.y - mapPos.y;
-        auto fracZ = origin.z - mapPos.z;
-
-        if (dir.x >= 0) {
-                tMax.x = (1.0f - fracX) * tDelta.x;
-        } else {
-                tMax.x = fracX * tDelta.x;
-        }
-
-        if (dir.y >= 0) {
-                tMax.y = (1.0f - fracY) * tDelta.y;
-        } else {
-                tMax.y = fracY * tDelta.y;
-        }
-
-        if (dir.z >= 0) {
-                tMax.z = (1.0f - fracZ) * tDelta.z;
-        } else {
-                tMax.z = fracZ * tDelta.z;
-        }
-
-        // Current ray distance traveled
-        float currentDist = 0.0f;
-
-        // Normal vector components for a hit (only one will be non-zero)
-        glm::ivec3 normal = glm::ivec3(0);
-
-        // 2. Traversal Loop
-        while (currentDist < maxDist) {
-
-                // Determine which axis boundary the ray hits next (smallest tMax)
-                if (tMax.x < tMax.y) {
-                        if (tMax.x < tMax.z) {
-                                // X-axis is the shortest
-                                currentDist = tMax.x;
-                                tMax.x += tDelta.x;
-                                mapPos.x += step.x;
-                                normal = glm::ivec3(-step.x, 0, 0); // Normal is opposite to the step direction
-                        } else {
-                                // Z-axis is the shortest (or equal to X)
-                                currentDist = tMax.z;
-                                tMax.z += tDelta.z;
-                                mapPos.z += step.z;
-                                normal = glm::ivec3(0, 0, -step.z);
-                        }
-                } else {
-                        if (tMax.y < tMax.z) {
-                                // Y-axis is the shortest (or equal to X)
-                                currentDist = tMax.y;
-                                tMax.y += tDelta.y;
-                                mapPos.y += step.y;
-                                normal = glm::ivec3(0, -step.y, 0);
-                        } else {
-                                // Z-axis is the shortest (or equal to Y)
-                                currentDist = tMax.z;
-                                tMax.z += tDelta.z;
-                                mapPos.z += step.z;
-                                normal = glm::ivec3(0, 0, -step.z);
+                                hit.normal = glm::vec3(normal);
+                                return hit;
                         }
                 }
 
-                // Check if we've traveled further than the max distance allowed
-                if (currentDist > maxDist) {
-                        break;
-                }
-
-                // Check the block at the new map position
-                // We assume any block not equal to BlockType::AIR is a solid block that can be hit.
-                if (world.getBlockAt(mapPos) != BlockType::AIR) {
-                        // We hit a block!
-                        hit.hit = true;
-                        hit.blockPos = mapPos;
-                        hit.normal = glm::vec3(normal);
-                        // exact hit position along the ray
-                        hit.hitPos = origin + dir * currentDist;
-                        return hit;
-                }
+                previousVoxel = voxel;
         }
 
-        // 3. Max distance reached, no block hit
         return hit;
 }
 
@@ -548,4 +580,9 @@ void cleanupCrosshair() {
         if (crosshairVAO) glDeleteVertexArrays(1, &crosshairVAO);
         if (crosshairVBO) glDeleteBuffers(1, &crosshairVBO);
         if (crosshairShader) delete crosshairShader;
+        if (debugLineVAO) glDeleteVertexArrays(1, &debugLineVAO);
+        if (debugLineVBO) glDeleteBuffers(1, &debugLineVBO);
+        if (debugLineShader) delete debugLineShader;
+        if (debugPointVAO) glDeleteVertexArrays(1, &debugPointVAO);
+        if (debugPointVBO) glDeleteBuffers(1, &debugPointVBO);
 }
