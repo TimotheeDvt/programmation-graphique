@@ -43,10 +43,12 @@ FPSCamera::FPSCamera(glm::vec3 position, float yaw, float pitch) {
     mPosition = position;
     mYaw = yaw;
     mPitch = pitch;
+    updateCameraVectors(); // IMPORTANT: Initialize camera vectors
 }
 
 void FPSCamera::setPosition(const glm::vec3& position) {
     mPosition = position;
+    updateCameraVectors();
 }
 
 void FPSCamera::move(const glm::vec3& offsetPos) {
@@ -58,21 +60,26 @@ void FPSCamera::rotate(float yaw, float pitch) {
     mYaw += glm::radians(yaw);
     mPitch += glm::radians(pitch);
 
+    // Clamp pitch to prevent gimbal lock
     mPitch = glm::clamp(mPitch, -glm::pi<float>() / 2.0f + 0.1f, glm::pi<float>() / 2.0f - 0.1f);
     updateCameraVectors();
 }
 
 void FPSCamera::updateCameraVectors() {
+    // Calculate the look direction vector
     glm::vec3 look;
     look.x = cosf(mPitch) * sinf(mYaw);
     look.y = sinf(mPitch);
     look.z = cosf(mPitch) * cosf(mYaw);
 
+    // Normalize to ensure it's a unit vector
     mLook = glm::normalize(look);
 
+    // Calculate right and up vectors
     mRight = glm::normalize(glm::cross(mLook, WORLD_UP));
     mUp = glm::normalize(glm::cross(mRight, mLook));
 
+    // Update target position for view matrix
     mTargetPos = mPosition + mLook;
 }
 

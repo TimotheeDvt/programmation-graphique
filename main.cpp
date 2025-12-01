@@ -234,27 +234,57 @@ void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY) {
 void glfw_onMouseButton(GLFWwindow* window, int button, int action, int mods) {
         if (action != GLFW_PRESS) return;
 
+        // Get camera position and look direction
         glm::vec3 origin = fpsCamera.getPosition();
-        glm::vec3 dir    = glm::normalize(fpsCamera.getLook());
+        glm::vec3 dir = fpsCamera.getLook(); // Already normalized in updateCameraVectors
+
+        // Debug output
+        std::cout << "Camera pos: " << origin.x << ", " << origin.y << ", " << origin.z << std::endl;
+        std::cout << "Look dir: " << dir.x << ", " << dir.y << ", " << dir.z << std::endl;
 
         RaycastHit hit = raycastWorld(world, origin, dir, 16.0f);
 
-        if (!hit.hit) return;
+        if (!hit.hit) {
+                std::cout << "No block hit" << std::endl;
+                return;
+        }
+
+        std::cout << "Hit block at: " << hit.blockPos.x << ", " << hit.blockPos.y << ", " << hit.blockPos.z << std::endl;
+        std::cout << "Normal: " << hit.normal.x << ", " << hit.normal.y << ", " << hit.normal.z << std::endl;
 
         if (button == GLFW_MOUSE_BUTTON_LEFT) {
                 // Break block
                 world.setBlockAt(hit.blockPos, BlockType::AIR);
+                std::cout << "Broke block" << std::endl;
         } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-                // Place block on the face we hit: adjacent cell along normal
+                // Place block adjacent to the hit face
                 glm::vec3 placePos = hit.blockPos + hit.normal;
 
-                // Simple support check for torches: require solid below if placing torch
+                std::cout << "Placing at: " << placePos.x << ", " << placePos.y << ", " << placePos.z << std::endl;
+
+                // Check if we're not placing inside the player (roughly at camera position)
+                glm::vec3 playerPos = fpsCamera.getPosition();
+                float distToPlayer = glm::length(placePos - playerPos);
+                if (distToPlayer < 1.5f) {
+                        std::cout << "Too close to player, can't place block" << std::endl;
+                        return;
+                }
+
+                // Simple support check for torches: require solid below
                 if (gSelectedBlock == BlockType::TORCH) {
-                        glm::vec3 below = placePos + glm::vec3(0,-1,0);
+                        glm::vec3 below = placePos + glm::vec3(0, -1, 0);
                         BlockType support = world.getBlockAt(below);
-                        if (!world.setBlockAt(placePos, BlockType::TORCH))return;
+                        if (support == BlockType::AIR) {
+                                std::cout << "Torch needs solid block below" << std::endl;
+                                return;
+                        }
+                }
+
+                bool placed = world.setBlockAt(placePos, gSelectedBlock);
+                if (placed) {
+                        std::cout << "Placed block successfully" << std::endl;
                 } else {
-                        world.setBlockAt(placePos, gSelectedBlock);
+                        std::cout << "Failed to place block" << std::endl;
                 }
         }
 }
@@ -326,103 +356,7 @@ void showFPS(GLFWwindow* window) {
 }
 
 RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float stepSize) {
-        RaycastHit res{};
-        res.hit = false;
 
-        // Current voxel position
-        glm::ivec3 voxel = glm::ivec3(glm::floor(origin));
-
-        // Direction to step in each axis (-1, 0, or 1)
-        glm::ivec3 stepDir = glm::ivec3(
-                dir.x > 0 ? 1 : (dir.x < 0 ? -1 : 0),
-                dir.y > 0 ? 1 : (dir.y < 0 ? -1 : 0),
-                dir.z > 0 ? 1 : (dir.z < 0 ? -1 : 0)
-        );
-
-        // Distance to next voxel boundary along each axis
-        glm::vec3 tDelta = glm::vec3(
-                stepDir.x != 0 ? 1.0f / std::abs(dir.x) : FLT_MAX,
-                stepDir.y != 0 ? 1.0f / std::abs(dir.y) : FLT_MAX,
-                stepDir.z != 0 ? 1.0f / std::abs(dir.z) : FLT_MAX
-        );
-
-        // Distance along ray to next voxel boundary
-        glm::vec3 tMax;
-
-        // Calculate initial tMax for each axis
-        if (stepDir.x > 0)
-                tMax.x = (std::floor(origin.x) + 1.0f - origin.x) / std::abs(dir.x);
-        else if (stepDir.x < 0)
-                tMax.x = (origin.x - std::floor(origin.x)) / std::abs(dir.x);
-        else
-                tMax.x = FLT_MAX;
-
-        if (stepDir.y > 0) {
-                tMax.y = (std::floor(origin.y) + 1.0f - origin.y) / std::abs(dir.y);
-        } else if (stepDir.y < 0) {
-                tMax.y = (origin.y - std::floor(origin.y)) / -std::abs(dir.y);
-        } else {
-                tMax.y = FLT_MAX;
-        }
-
-        if (stepDir.z > 0) {
-                tMax.z = (std::floor(origin.z) + 1.0f - origin.z) / std::abs(dir.z);
-        } else if (stepDir.z < 0) {
-                tMax.z = (origin.z - std::floor(origin.z)) / -std::abs(dir.z);
-        } else {
-                tMax.z = FLT_MAX;
-        }
-
-        float t = 0.0f;
-        glm::ivec3 normal = glm::ivec3(0, 0, 0);
-
-        // DDA traversal
-        while (t < maxDist) {
-                // Check current voxel (integer world coords)
-                BlockType bt = world.getBlock(voxel.x, voxel.y, voxel.z);
-
-                if (bt != BlockType::AIR) {
-                        res.hit = true;
-                        res.blockPos = glm::vec3(voxel);
-                        res.hitPos   = origin + dir * t;
-                        res.normal   = glm::vec3(normal);
-                        return res;
-                }
-
-                // Step to next voxel boundary
-                if (tMax.x < tMax.y) {
-                        if (tMax.x < tMax.z) {
-                                // X is closest
-                                t = tMax.x;
-                                tMax.x += tDelta.x;
-                                voxel.x += stepDir.x;
-                                normal = glm::ivec3(-stepDir.x, 0, 0);
-                        } else {
-                                // Z is closest
-                                t = tMax.z;
-                                tMax.z += tDelta.z;
-                                voxel.z += stepDir.z;
-                                normal = glm::ivec3(0, 0, -stepDir.z);
-                        }
-                } else {
-                        if (tMax.y < tMax.z) {
-                                // Y is closest
-                                t = tMax.y;
-                                tMax.y += tDelta.y;
-                                voxel.y += stepDir.y;
-                                normal = glm::ivec3(0, -stepDir.y, 0);
-                        } else {
-                                // Z is closest
-                                t = tMax.z;
-                                tMax.z += tDelta.z;
-                                voxel.z += stepDir.z;
-                                normal = glm::ivec3(0, 0, -stepDir.z);
-                        }
-                }
-        }
-
-        std::cout << "Raycast: no hit within max distance" << std::endl;
-        return res;
 }
 
 void drawCrosshair() {
