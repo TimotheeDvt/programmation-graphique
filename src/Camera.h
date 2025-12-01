@@ -41,7 +41,7 @@ class Camera {
 
 class FPSCamera : public Camera {
     public:
-        FPSCamera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), float yaw = glm::pi<float>(), float pitch = 0.0f);
+        FPSCamera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), float yaw = 0.0f, float pitch = 0.0f); // Note: yaw = 0.0f is a placeholder, the base class default is used.
 
         virtual void setPosition(const glm::vec3& position);
         virtual void rotate(float yaw, float pitch); // in degrees

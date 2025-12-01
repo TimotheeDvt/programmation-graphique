@@ -13,7 +13,7 @@ Camera::Camera()
     mUp(glm::vec3(0.0f, 1.0f, 0.0f)),
     mRight(glm::vec3(0.0f, 0.0f, 0.0f)),
     WORLD_UP(glm::vec3(0.0f, 1.0f, 0.0f)),
-    mYaw(glm::pi<float>()),
+    mYaw(1.5f * glm::pi<float>()),
     mPitch(0.0f),
     mFOV(DEF_FOV)
 { }
@@ -40,9 +40,12 @@ const glm::vec3& Camera::getPosition() const {
 
 // FPSCamera
 FPSCamera::FPSCamera(glm::vec3 position, float yaw, float pitch) {
+    // We inherit mYaw's default value from the base Camera constructor
     mPosition = position;
-    mYaw = yaw;
-    mPitch = pitch;
+    if (yaw != 0.0f || pitch != 0.0f) { // Only override if values are provided
+        mYaw = yaw;
+        mPitch = pitch;
+    }
     updateCameraVectors(); // IMPORTANT: Initialize camera vectors
 }
 
@@ -68,9 +71,9 @@ void FPSCamera::rotate(float yaw, float pitch) {
 void FPSCamera::updateCameraVectors() {
     // Calculate the look direction vector
     glm::vec3 look;
-    look.x = cosf(mPitch) * sinf(mYaw);
+    look.x = cosf(mPitch) * cosf(mYaw);
     look.y = sinf(mPitch);
-    look.z = cosf(mPitch) * cosf(mYaw);
+    look.z = cosf(mPitch) * sinf(mYaw);
 
     // Normalize to ensure it's a unit vector
     mLook = glm::normalize(look);

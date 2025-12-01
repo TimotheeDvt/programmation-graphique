@@ -2,6 +2,9 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <sstream>
 #include <filesystem>
+#include <cmath> // For std::abs
+#include <limits> // For std::numeric_limits
+#include <glm/gtx/norm.hpp>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -20,6 +23,9 @@ FPSCamera fpsCamera(glm::vec3(0.0f, 20.0f, 20.0f));
 const double ZOOM_SENSITIVITY = -3.0;
 float MOVE_SPEED = 8.0;
 const float MOUSE_SENSITIVITY = 0.1f;
+
+bool gLeftMouseButtonPressed = false;
+bool gRightMouseButtonPressed = false;
 
 void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode);
 void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height);
@@ -232,60 +238,9 @@ void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY) {
 }
 
 void glfw_onMouseButton(GLFWwindow* window, int button, int action, int mods) {
-        if (action != GLFW_PRESS) return;
-
-        // Get camera position and look direction
-        glm::vec3 origin = fpsCamera.getPosition();
-        glm::vec3 dir = fpsCamera.getLook(); // Already normalized in updateCameraVectors
-
-        // Debug output
-        std::cout << "Camera pos: " << origin.x << ", " << origin.y << ", " << origin.z << std::endl;
-        std::cout << "Look dir: " << dir.x << ", " << dir.y << ", " << dir.z << std::endl;
-
-        RaycastHit hit = raycastWorld(world, origin, dir, 16.0f);
-
-        if (!hit.hit) {
-                std::cout << "No block hit" << std::endl;
-                return;
-        }
-
-        std::cout << "Hit block at: " << hit.blockPos.x << ", " << hit.blockPos.y << ", " << hit.blockPos.z << std::endl;
-        std::cout << "Normal: " << hit.normal.x << ", " << hit.normal.y << ", " << hit.normal.z << std::endl;
-
-        if (button == GLFW_MOUSE_BUTTON_LEFT) {
-                // Break block
-                world.setBlockAt(hit.blockPos, BlockType::AIR);
-                std::cout << "Broke block" << std::endl;
-        } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-                // Place block adjacent to the hit face
-                glm::vec3 placePos = hit.blockPos + hit.normal;
-
-                std::cout << "Placing at: " << placePos.x << ", " << placePos.y << ", " << placePos.z << std::endl;
-
-                // Check if we're not placing inside the player (roughly at camera position)
-                glm::vec3 playerPos = fpsCamera.getPosition();
-                float distToPlayer = glm::length(placePos - playerPos);
-                if (distToPlayer < 1.5f) {
-                        std::cout << "Too close to player, can't place block" << std::endl;
-                        return;
-                }
-
-                // Simple support check for torches: require solid below
-                if (gSelectedBlock == BlockType::TORCH) {
-                        glm::vec3 below = placePos + glm::vec3(0, -1, 0);
-                        BlockType support = world.getBlockAt(below);
-                        if (support == BlockType::AIR) {
-                                std::cout << "Torch needs solid block below" << std::endl;
-                                return;
-                        }
-                }
-
-                bool placed = world.setBlockAt(placePos, gSelectedBlock);
-                if (placed) {
-                        std::cout << "Placed block successfully" << std::endl;
-                } else {
-                        std::cout << "Failed to place block" << std::endl;
-                }
+        if (action == GLFW_PRESS) {
+                if (button == GLFW_MOUSE_BUTTON_LEFT) gLeftMouseButtonPressed = true;
+                if (button == GLFW_MOUSE_BUTTON_RIGHT) gRightMouseButtonPressed = true;
         }
 }
 
@@ -295,7 +250,7 @@ void update(double elapsedTime) {
         glfwGetCursorPos(gWindow, &mouseX, &mouseY);
 
         fpsCamera.rotate(
-                (float)(gWindowWidth/2.0 - mouseX) * MOUSE_SENSITIVITY,
+                (float)(mouseX - gWindowWidth/2.0) * MOUSE_SENSITIVITY,
                 (float)(gWindowHeight/2.0 - mouseY) * MOUSE_SENSITIVITY
         );
 
@@ -327,6 +282,65 @@ void update(double elapsedTime) {
         if (glfwGetKey(gWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
                 fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, -1, 0));
         }
+
+        // Raycasting and block interaction
+        if (gLeftMouseButtonPressed || gRightMouseButtonPressed) {
+                glm::vec3 origin = fpsCamera.getPosition();
+                // Ensure direction is normalized before DDA raycast
+                glm::vec3 dir = glm::normalize(fpsCamera.getLook());
+
+                // Debug: print origin and direction to help track alignment issues
+                std::cout << "Ray origin: " << origin.x << ", " << origin.y << ", " << origin.z << std::endl;
+                std::cout << "Ray dir: " << dir.x << ", " << dir.y << ", " << dir.z << std::endl;
+
+                RaycastHit hit = raycastWorld(world, origin, dir, 16.0f);
+
+                if (hit.hit) {
+                        std::cout << "Hit block at: " << hit.blockPos.x << ", " << hit.blockPos.y << ", " << hit.blockPos.z << std::endl;
+                        std::cout << "Normal: " << hit.normal.x << ", " << hit.normal.y << ", " << hit.normal.z << std::endl;
+
+                        if (gLeftMouseButtonPressed) {
+                                // Break block
+                                world.setBlockAt(hit.blockPos, BlockType::AIR);
+                                std::cout << "Broke block" << std::endl;
+                        } else if (gRightMouseButtonPressed) {
+                                // Place block adjacent to the hit face
+                                glm::vec3 placePos = hit.blockPos + hit.normal;
+
+                                std::cout << "Placing at: " << placePos.x << ", " << placePos.y << ", " << placePos.z << std::endl;
+
+                                // Check if we're not placing inside the player
+                                glm::vec3 playerPos = fpsCamera.getPosition();
+                                if (glm::length(placePos - playerPos) < 1.5f) {
+                                        std::cout << "Too close to player, can't place block" << std::endl;
+                                } else {
+                                        // Simple support check for torches: require solid below
+                                        if (gSelectedBlock == BlockType::TORCH) {
+                                                glm::vec3 below = placePos + glm::vec3(0, -1, 0);
+                                                BlockType support = world.getBlockAt(below);
+                                                if (support == BlockType::AIR) {
+                                                        std::cout << "Torch needs solid block below" << std::endl;
+                                                } else {
+                                                        world.setBlockAt(placePos, gSelectedBlock);
+                                                }
+                                        } else {
+                                                bool placed = world.setBlockAt(placePos, gSelectedBlock);
+                                                if (placed) {
+                                                        std::cout << "Placed block successfully" << std::endl;
+                                                } else {
+                                                        std::cout << "Failed to place block" << std::endl;
+                                                }
+                                        }
+                                }
+                        }
+                } else {
+                        std::cout << "No block hit" << std::endl;
+                }
+        }
+
+        // Reset mouse button flags
+        gLeftMouseButtonPressed = false;
+        gRightMouseButtonPressed = false;
 }
 
 void showFPS(GLFWwindow* window) {
@@ -356,7 +370,115 @@ void showFPS(GLFWwindow* window) {
 }
 
 RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float stepSize) {
+        // Voxel Ray Traversal (DDA) Algorithm
 
+        RaycastHit hit;
+        hit.hit = false;
+
+        // 1. Setup Initial State
+
+        // Current block position (integer coordinates)
+        glm::ivec3 mapPos = glm::floor(origin);
+
+        // Direction (step) for each axis (+1 or -1)
+        glm::ivec3 step;
+        step.x = (dir.x >= 0) ? 1 : -1;
+        step.y = (dir.y >= 0) ? 1 : -1;
+        step.z = (dir.z >= 0) ? 1 : -1;
+
+        // tDelta: distance ray has to travel to cross one unit of X, Y, or Z (block size)
+        glm::vec3 tDelta;
+        // Handle division by zero for axis-aligned rays by setting tDelta to infinity
+        tDelta.x = (dir.x == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(1.0f / dir.x);
+        tDelta.y = (dir.y == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(1.0f / dir.y);
+        tDelta.z = (dir.z == 0.0f) ? std::numeric_limits<float>::infinity() : std::abs(1.0f / dir.z);
+
+        // tMax: distance ray has traveled to hit the next block boundary in each axis
+        glm::vec3 tMax;
+
+        // Calculate initial tMax for each axis
+        auto fracX = origin.x - mapPos.x;
+        auto fracY = origin.y - mapPos.y;
+        auto fracZ = origin.z - mapPos.z;
+
+        if (dir.x >= 0) {
+                tMax.x = (1.0f - fracX) * tDelta.x;
+        } else {
+                tMax.x = fracX * tDelta.x;
+        }
+
+        if (dir.y >= 0) {
+                tMax.y = (1.0f - fracY) * tDelta.y;
+        } else {
+                tMax.y = fracY * tDelta.y;
+        }
+
+        if (dir.z >= 0) {
+                tMax.z = (1.0f - fracZ) * tDelta.z;
+        } else {
+                tMax.z = fracZ * tDelta.z;
+        }
+
+        // Current ray distance traveled
+        float currentDist = 0.0f;
+
+        // Normal vector components for a hit (only one will be non-zero)
+        glm::ivec3 normal = glm::ivec3(0);
+
+        // 2. Traversal Loop
+        while (currentDist < maxDist) {
+
+                // Determine which axis boundary the ray hits next (smallest tMax)
+                if (tMax.x < tMax.y) {
+                        if (tMax.x < tMax.z) {
+                                // X-axis is the shortest
+                                currentDist = tMax.x;
+                                tMax.x += tDelta.x;
+                                mapPos.x += step.x;
+                                normal = glm::ivec3(-step.x, 0, 0); // Normal is opposite to the step direction
+                        } else {
+                                // Z-axis is the shortest (or equal to X)
+                                currentDist = tMax.z;
+                                tMax.z += tDelta.z;
+                                mapPos.z += step.z;
+                                normal = glm::ivec3(0, 0, -step.z);
+                        }
+                } else {
+                        if (tMax.y < tMax.z) {
+                                // Y-axis is the shortest (or equal to X)
+                                currentDist = tMax.y;
+                                tMax.y += tDelta.y;
+                                mapPos.y += step.y;
+                                normal = glm::ivec3(0, -step.y, 0);
+                        } else {
+                                // Z-axis is the shortest (or equal to Y)
+                                currentDist = tMax.z;
+                                tMax.z += tDelta.z;
+                                mapPos.z += step.z;
+                                normal = glm::ivec3(0, 0, -step.z);
+                        }
+                }
+
+                // Check if we've traveled further than the max distance allowed
+                if (currentDist > maxDist) {
+                        break;
+                }
+
+                // Check the block at the new map position
+                // We assume any block not equal to BlockType::AIR is a solid block that can be hit.
+                if (world.getBlockAt(mapPos) != BlockType::AIR) {
+                        // We hit a block!
+                        hit.hit = true;
+                        hit.blockPos = mapPos;
+                        hit.normal = glm::vec3(normal);
+                        // exact hit position along the ray
+                        hit.hitPos = origin + dir * currentDist;
+                        return hit;
+                }
+        }
+
+        // 3. Max distance reached, no block hit
+        return hit;
 }
 
 void drawCrosshair() {
