@@ -159,8 +159,8 @@ void Chunk::generate() {
                         int worldZ = mChunkZ * CHUNK_SIZE + z;
 
                         float h =
-                                sin(worldX * 0.05f) * 4.0f +
-                                cos(worldZ * 0.05f) * 4.0f;
+                        sin(worldX * 0.05f) * 4.0f +
+                        cos(worldZ * 0.05f) * 4.0f;
 
                         int height = 16 + (int)h;      // Middle terrain height
                         height = glm::clamp(height, 4, CHUNK_HEIGHT - 10);
@@ -325,13 +325,11 @@ void Chunk::initializeTextureConfig() {
 }
 
 void World::localToChunkCoords(int worldX, int worldY, int worldZ,
-                               int& chunkX, int& chunkZ,
-                               int& localX, int& localY, int& localZ) const
-{
-        chunkX = (worldX >= 0) ? worldX / Chunk::CHUNK_SIZE
-                                : (worldX + 1) / Chunk::CHUNK_SIZE - 1;
-        chunkZ = (worldZ >= 0) ? worldZ / Chunk::CHUNK_SIZE
-                                : (worldZ + 1) / Chunk::CHUNK_SIZE - 1;
+        int& chunkX, int& chunkZ,
+        int& localX, int& localY, int& localZ
+) const{
+        chunkX = (worldX >= 0) ? worldX / Chunk::CHUNK_SIZE : (worldX + 1) / Chunk::CHUNK_SIZE - 1;
+        chunkZ = (worldZ >= 0) ? worldZ / Chunk::CHUNK_SIZE : (worldZ + 1) / Chunk::CHUNK_SIZE - 1;
 
         localX = worldX - chunkX * Chunk::CHUNK_SIZE;
         localZ = worldZ - chunkZ * Chunk::CHUNK_SIZE;
@@ -339,11 +337,11 @@ void World::localToChunkCoords(int worldX, int worldY, int worldZ,
 }
 
 BlockType World::getBlock(int x, int y, int z) const {
-    int chunkX, chunkZ, localX, localY, localZ;
-    localToChunkCoords(x, y, z, chunkX, chunkZ, localX, localY, localZ);
-    Chunk* chunk = const_cast<World*>(this)->findChunk(chunkX, chunkZ);
-    if (!chunk) return BlockType::AIR;
-    return chunk->getBlock(localX, localY, localZ);
+        int chunkX, chunkZ, localX, localY, localZ;
+        localToChunkCoords(x, y, z, chunkX, chunkZ, localX, localY, localZ);
+        Chunk* chunk = const_cast<World*>(this)->findChunk(chunkX, chunkZ);
+        if (!chunk) return BlockType::AIR;
+        return chunk->getBlock(localX, localY, localZ);
 }
 
 void Chunk::setBlock(int x, int y, int z, BlockType type) {
@@ -544,27 +542,43 @@ void Chunk::addTorchMesh(int x, int y, int z) {
         glm::vec3 chunkWorldPos = glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE);
         glm::vec3 worldPos = chunkWorldPos + glm::vec3(x + 0.5f, y, z + 0.5f); // center in block
 
-        float radius = 0.5f;
+        float radius = 0.1f;
         float baseY  = -0.5f;
         float topY   = 0.5f;
 
         struct Quad { glm::vec3 p[4]; glm::vec3 normal; };
+        Quad quads[6];
 
-        Quad quads[2];
+        // The torch mesh is made of two intersecting quads.
+        // We define 4 faces for lighting to work from all sides.
 
-        // Diagonal in XZ: (-r,0,-r) .. (r,0,r)
-        quads[0].p[0] = worldPos + glm::vec3(-radius, baseY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[0].p[1] = worldPos + glm::vec3( radius, baseY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[0].p[2] = worldPos + glm::vec3( radius, topY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[0].p[3] = worldPos + glm::vec3(-radius, topY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[0].normal = glm::normalize(glm::vec3(1, 0, 1));
+        // Quad 1: along Z
+        quads[0].p[0] = worldPos + glm::vec3(-0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].p[1] = worldPos + glm::vec3( 0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].p[2] = worldPos + glm::vec3( 0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].p[3] = worldPos + glm::vec3(-0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].normal = glm::vec3(0, 0, 1);
 
-        // Other diagonal: (-r,0,r) .. (r,0,-r)
-        quads[1].p[0] = worldPos + glm::vec3(-radius, baseY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[1].p[1] = worldPos + glm::vec3( radius, baseY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[1].p[2] = worldPos + glm::vec3( radius, topY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[1].p[3] = worldPos + glm::vec3(-radius, topY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
-        quads[1].normal = glm::normalize(glm::vec3(1, 0,-1));
+        // Quad 2: also along Z, but facing the other way for two-sided lighting
+        quads[1].p[0] = worldPos + glm::vec3( 0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].p[1] = worldPos + glm::vec3(-0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].p[2] = worldPos + glm::vec3(-0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].p[3] = worldPos + glm::vec3( 0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].normal = glm::vec3(0, 0, -1);
+
+        // Quad 3: along X
+        quads[2].p[0] = worldPos + glm::vec3(0.0f, baseY, -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[2].p[1] = worldPos + glm::vec3(0.0f, baseY,  0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[2].p[2] = worldPos + glm::vec3(0.0f, topY,   0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[2].p[3] = worldPos + glm::vec3(0.0f, topY,  -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[2].normal = glm::vec3(1, 0, 0);
+
+        // Quad 4: also along X, facing the other way
+        quads[3].p[0] = worldPos + glm::vec3(0.0f, baseY,  0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[3].p[1] = worldPos + glm::vec3(0.0f, baseY, -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[3].p[2] = worldPos + glm::vec3(0.0f, topY,  -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[3].p[3] = worldPos + glm::vec3(0.0f, topY,   0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[3].normal = glm::vec3(-1, 0, 0);
 
         int textureIndex = -1;
         const auto& config = m_textureConfig.at(BlockType::TORCH);
@@ -574,7 +588,7 @@ void Chunk::addTorchMesh(int x, int y, int z) {
         float texIdx = (float)textureIndex;
         std::cout << "Adding torch mesh with texture index: " << texIdx << std::endl;
 
-        for (int q = 0; q < 2; ++q) {
+        for (int q = 0; q < 4; ++q) {
                 glm::vec3 n = quads[q].normal;
 
                 CubeVertex v[6];
@@ -727,21 +741,25 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
 }
 
 std::vector<glm::vec3> World::getTorchLightPositions() const {
-    std::vector<glm::vec3> positions;
+        std::vector<glm::vec3> positions;
 
-    for (auto chunk : mChunks) {
-        glm::vec3 chunkPos = chunk->getWorldPosition();
+        for (auto chunk : mChunks) {
+                glm::vec3 chunkPos = chunk->getWorldPosition();
 
-        for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
-            for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
-                for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
-                    if (chunk->getBlock(x, y, z) == BlockType::TORCH) {
-                        // Position the light source at the center of the torch model
-                        positions.push_back(chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f));
-                    }
+                for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
+                        for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
+                                for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
+                                        if (chunk->getBlock(x, y, z) == BlockType::TORCH) {
+                                                // Position the light source at the top of the torch model
+                                                positions.push_back(
+                                                        chunkPos
+                                                        + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f)
+                                                        - glm::vec3(0.5f, 0.3f, 0.5f)
+                                                );
+                                        }
+                                }
+                        }
                 }
-            }
         }
-    }
-    return positions;
+        return positions;
 }
