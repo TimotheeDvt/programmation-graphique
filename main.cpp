@@ -14,6 +14,7 @@
 #include "./src/Cube.h"
 
 #define MAX_BLOCK_TEXTURES 16
+#define MAX_POINT_LIGHTS 256
 Texture2D gBlockTextures[MAX_BLOCK_TEXTURES];
 
 const char* APP_TITLE = "Minecraft Clone - OpenGL Demo";
@@ -96,20 +97,21 @@ int main() {
         world.generate(1); // 4 chunk render distance
 
         const auto& pathToIndex = Chunk::m_pathToTextureIndex;
-        int numTextures = 0;
+        int numTexturesToBind = (int)pathToIndex.size();
+
+        GLint textureUnits[MAX_BLOCK_TEXTURES];
+
+        if (numTexturesToBind > MAX_BLOCK_TEXTURES) {
+                std::cerr << "ERREUR: Trop de textures! Max est " << MAX_BLOCK_TEXTURES << std::endl;
+                return -1;
+        }
 
         for (const auto& pair : pathToIndex) {
                 const std::string& path = pair.first;
                 int index = pair.second;
 
-                if (index >= MAX_BLOCK_TEXTURES) {
-                        std::cerr << "ERREUR: Trop de textures! Max est " << MAX_BLOCK_TEXTURES << std::endl;
-                        break;
-                }
-
                 if (gBlockTextures[index].loadTexture(path, true)) {
-                        numTextures++;
-                        // NOTE: La taille de numTextures devrait être égale à Chunk::m_nextTextureIndex
+                        textureUnits[index] = index;
                 } else {
                         std::cerr << "Échec du chargement de la texture: " << path << std::endl;
                 }
@@ -119,7 +121,15 @@ int main() {
 
         // Get redstone light positions
         std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
-        std::cout << "Found " << redstoneLights.size() << " redstone blocks" << std::endl;
+        std::cout << "Found " << redstoneLights.size() << " point light(s) from redstone blocks" << std::endl;
+
+        // Store light data for each frame
+        std::vector<glm::vec3> frameLights;
+        for (const auto& pos : redstoneLights) {
+                if (frameLights.size() >= MAX_POINT_LIGHTS) break;
+                frameLights.push_back(pos);
+        }
+        std::cout << "Using " << frameLights.size() << " point lights (max: " << MAX_POINT_LIGHTS << ")" << std::endl;
 
         double lastTime = glfwGetTime();
 
@@ -155,18 +165,18 @@ int main() {
                 // Directional light (sun)
                 glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
                 minecraftShader.setUniform("dirLight.direction", sunDirection);
-                minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.5f);
-                minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f));
-                minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f));
+                minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
+                minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
+                minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
 
-                // Point lights (redstone) - limit to closest 50
-                int numLights = std::min((int)redstoneLights.size(), 50);
-                minecraftShader.setUniform("numPointLights", numLights);
-
-                for (int i = 0; i < numLights; i++) {
+                // Point lights (redstone)
+                minecraftShader.setUniform("numPointLights", (int)frameLights.size());
+                for (int i = 0; i < (int)frameLights.size(); i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
 
-                        minecraftShader.setUniform((base + ".position").c_str(), redstoneLights[i]);
+                        // std::cout << "pos: " << frameLights[i].x << ", " << frameLights[i].y << ", " << frameLights[i].z << std::endl;
+
+                        minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
                         minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(1.0f, 0.0f, 0.0f));
                         minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
                         minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(1.0f, 0.2f, 0.2f));
@@ -182,14 +192,14 @@ int main() {
                 minecraftShader.setUniform("material.shininess", 8.0f);
 
                 // Draw world
-                for (int i = 0; i < numTextures; i++) {
+                for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].bind(i); // Bind la texture 'i' à l'unité GL_TEXTURE'i'
                         // Envoyer l'index (i) à l'uniforme du sampler dans le shader
                         std::string samplerName = "material.diffuseMaps[" + std::to_string(i) + "]";
                         minecraftShader.setUniformSampler(samplerName.c_str(), i);
                 }
                 world.draw();
-                for (int i = 0; i < numTextures; i++) {
+                for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].unbind(i);
                 }
 
@@ -408,24 +418,15 @@ void update(double elapsedTime) {
                 glm::vec3 dir = glm::normalize(fpsCamera.getLook());
 
                 // Debug: print origin and direction to help track alignment issues
-                std::cout << "Ray origin: " << origin.x << ", " << origin.y << ", " << origin.z << std::endl;
-                std::cout << "Ray dir: " << dir.x << ", " << dir.y << ", " << dir.z << std::endl;
-
                 RaycastHit hit = raycastWorld(world, origin, dir, 16.0f);
 
                 if (hit.hit) {
-                        std::cout << "Hit block at: " << hit.blockPos.x << ", " << hit.blockPos.y << ", " << hit.blockPos.z << std::endl;
-                        std::cout << "Normal: " << hit.normal.x << ", " << hit.normal.y << ", " << hit.normal.z << std::endl;
-
                         if (gLeftMouseButtonPressed) {
                                 // Break block
                                 world.setBlockAt(hit.blockPos, BlockType::AIR);
-                                std::cout << "Broke block" << std::endl;
                         } else if (gRightMouseButtonPressed) {
                                 // Place block adjacent to the hit face
                                 glm::vec3 placePos = hit.blockPos + hit.normal;
-
-                                std::cout << "Placing at: " << placePos.x << ", " << placePos.y << ", " << placePos.z << std::endl;
 
                                 // Check if we're not placing inside the player
                                 glm::vec3 playerPos = fpsCamera.getPosition();
@@ -443,16 +444,11 @@ void update(double elapsedTime) {
                                                 }
                                         } else {
                                                 bool placed = world.setBlockAt(placePos, gSelectedBlock);
-                                                if (placed) {
-                                                        std::cout << "Placed block successfully" << std::endl;
-                                                } else {
-                                                        std::cout << "Failed to place block" << std::endl;
-                                                }
                                         }
                                 }
                         }
                 } else {
-                        std::cout << "No block hit" << std::endl;
+
                 }
         }
 

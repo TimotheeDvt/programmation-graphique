@@ -147,6 +147,7 @@ Chunk::~Chunk() {
         glDeleteVertexArrays(1, &mVAO);
         glDeleteBuffers(1, &mVBO);
 }
+int countRedstone = 0;
 
 void Chunk::generate() {
         std::mt19937 rng(mChunkX * 928371 + mChunkZ * 1231237);
@@ -180,8 +181,10 @@ void Chunk::generate() {
                                 }
                         }
 
-                        if (dist(rng) < 0.01f && height + 1 < CHUNK_HEIGHT - 1) {
+                        if (dist(rng) < 0.01f && height + 1 < CHUNK_HEIGHT - 1 && countRedstone == 0) {
                                 mBlocks[x][height + 1][z] = BlockType::REDSTONE;
+                                std::cout << "Placed redstone at (" << (mChunkX * CHUNK_SIZE + x) << ", " << (height + 1) << ", " << (mChunkZ * CHUNK_SIZE + z) << ")\n";
+                                countRedstone++;
                         }
 
                         if (dist(rng) < 0.01f && height < CHUNK_HEIGHT - 7) {  // 3% chance, need room for tree
@@ -241,7 +244,7 @@ void Chunk::initializeTextureConfig() {
         // Helper lambda pour obtenir un index unique pour un chemin de texture
         auto getIndex = [](const std::string& path) -> int {
                 if (m_pathToTextureIndex.find(path) == m_pathToTextureIndex.end()) {
-                m_pathToTextureIndex[path] = m_nextTextureIndex++;
+                        m_pathToTextureIndex[path] = m_nextTextureIndex++;
                 }
                 return m_pathToTextureIndex[path];
         };
@@ -250,7 +253,7 @@ void Chunk::initializeTextureConfig() {
 
         // BLOCK_TYPE::GRASS
         m_textureConfig[BlockType::GRASS] = {
-                "./textures/grass-top.png",   // Top
+                "./textures/grass-top.jpg",   // Top
                 "./textures/dirt.png",        // Bottom
                 "./textures/grass-side.png",  // Side
                 ""
@@ -290,9 +293,9 @@ void Chunk::initializeTextureConfig() {
 
         // BLOCK_TYPE::LEAVES
         m_textureConfig[BlockType::LEAVES] = {
-                "./textures/leaves_2.png",
-                "./textures/leaves_2.png",
-                "./textures/leaves_2.png",
+                "./textures/leaves.png",
+                "./textures/leaves.png",
+                "./textures/leaves.png",
                 ""
         };
 
@@ -370,61 +373,6 @@ bool Chunk::shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const 
 
         return true;
 }
-
-// glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int corner) {
-//         // Texture atlas is 1024x512, each texture is 256x256
-//         // UV coordinates: 0.0 to 1.0 maps to entire atlas
-//         // Each texture takes up: 256/1024 = 0.25 horizontally, 256/512 = 0.5 vertically
-
-//         float u = 0.0f, v = 0.0f;
-//         float texSizeU = 0.25f;  // 256/1024
-//         float texSizeV = 0.5f;   // 256/512
-
-//         // Layout: Row 0: [Grass Top] [Grass Side] [Dirt] [Stone]
-//         //         Row 1: [Redstone] [Wood] [Leaves] [Empty]
-
-//         switch (type) {
-//                 case BlockType::GRASS:
-//                         if (normal.y > 0.5f) { // Top face
-//                                 u = 0.0f; v = 0.5f; // Grass top (0,0)
-//                         } else if (normal.y < -0.5f) { // Bottom face
-//                                 u = 0.5f; v = 0.5f; // (2,0)
-//                         } else { // Side faces
-//                                 u = 0.25f; v = 0.5f; // (2,0)
-//                         }
-//                         break;
-//                 case BlockType::DIRT:
-//                         u = 0.5f; v = 0.5f; // (2,0)
-//                         break;
-//                 case BlockType::STONE:
-//                         u = 0.75f; v = 0.5f; // (3,0)
-//                         break;
-//                 case BlockType::REDSTONE:
-//                         u = 0.0f; v = 0.0f; // (0,1)
-//                         break;
-//                 case BlockType::WOOD:
-//                         u = 0.25f; v = 0.0f; // (1,1)
-//                         break;
-//                 case BlockType::LEAVES:
-//                         u = 0.5f; v = 0.0f; // (2,1)
-//                         break;
-//                 case BlockType::AIR:
-//                         u = 0.75f; v = 0.0f; // (2,1)
-//                         break;
-//                 case BlockType::TORCH:
-//                         u = 0.5f; v = 0.0f; // (2,1)
-//                         break;
-//                 default:
-//                         u = 0.75f; v = 0.0f; // (2,1)
-//                         break;
-//         }
-
-//         // Add corner offset - each texture is 0.25 x 0.5
-//         if (corner == 1 || corner == 2) u += texSizeU;
-//         if (corner == 2 || corner == 3) v += texSizeV;
-
-//         return glm::vec2(u, v);
-// }
 
 // Dans src/Cube.cpp (Remplacer la version existante)
 glm::vec3 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int corner) {
@@ -581,7 +529,8 @@ void Chunk::buildMesh() {
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(CubeVertex), (void*)offsetof(CubeVertex, normal));
         glEnableVertexAttribArray(1);
 
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(CubeVertex), (void*)offsetof(CubeVertex, texCoords));
+        // texCoords now contain (u, v, textureIndex) so we must read 3 floats
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CubeVertex), (void*)offsetof(CubeVertex, texCoords));
         glEnableVertexAttribArray(2);
 
         glBindVertexArray(0);
@@ -750,7 +699,23 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
-                                                positions.push_back(chunkPos + glm::vec3(x, y, z));
+                                                // Block center (offset by 0.5 since blocks are 1 unit cubes centered at integer coords)
+                                                glm::vec3 blockCenter = chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f);
+                                                // Add one light at the center of each face (6 faces)
+                                                std::cout << "Redstone block at (" << blockCenter.x << ", " << blockCenter.y << ", " << blockCenter.z << ")\n";
+                                                const float faceOffset = 0.51f; // slightly outside the cube face
+                                                // +X face
+                                                positions.push_back(blockCenter + glm::vec3(faceOffset, 0.0f, 0.0f));
+                                                // -X face
+                                                positions.push_back(blockCenter + glm::vec3(-faceOffset, 0.0f, 0.0f));
+                                                // +Y face (top)
+                                                positions.push_back(blockCenter + glm::vec3(0.0f, faceOffset, 0.0f));
+                                                // -Y face (bottom)
+                                                positions.push_back(blockCenter + glm::vec3(0.0f, -faceOffset, 0.0f));
+                                                // +Z face
+                                                positions.push_back(blockCenter + glm::vec3(0.0f, 0.0f, faceOffset));
+                                                // -Z face
+                                                positions.push_back(blockCenter + glm::vec3(0.0f, 0.0f, -faceOffset));
                                         }
                                 }
                         }

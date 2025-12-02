@@ -20,15 +20,15 @@ struct PointLight {
         vec3 ambient;
         vec3 diffuse;
         vec3 specular;
-
         float constant;
         float linear;
         float exponant;
 };
 
-#define MAX_POINT_LIGHTS 50
+#define MAX_POINT_LIGHTS 64
+uniform PointLight pointLights[MAX_POINT_LIGHTS];
 
-flat in int TexIndex; // CORRECTION: Ajout du point-virgule
+flat in int TexIndex;
 in vec2 TexCoord;
 in vec3 Normal;
 in vec3 FragPos;
@@ -36,7 +36,6 @@ in vec3 FragPos;
 out vec4 FragColor;
 
 uniform DirectionalLight dirLight;
-uniform PointLight pointLights[MAX_POINT_LIGHTS];
 uniform int numPointLights;
 
 uniform Material material;
@@ -52,20 +51,17 @@ void main() {
         vec2 uv = TexCoord;
 
         vec3 texColor;
-        // Sélection de la bonne texture
-        // CORRECTION: Utilisation de 'TexIndex' (majuscule) qui est la variable 'flat in'
         if (TexIndex >= 0 && TexIndex < MAX_BLOCK_TEXTURES) {
                 texColor = vec3(texture(material.diffuseMaps[TexIndex], uv));
         } else {
-                // Couleur de débogage (e.g. magenta) si l'index est invalide
                 texColor = vec3(1.0f, 0.0f, 1.0f);
         }
 
         // Directional lighting (sun/moon)
         vec3 result = calcDirectionalLight(dirLight, norm, viewDir, texColor);
 
-        // Point lights (redstone)
-        for (int i = 0; i < numPointLights && i < MAX_BLOCK_TEXTURES; i++) {
+        // Point lights (redstone) from SSBO
+        for (int i = 0; i < numPointLights && i < MAX_POINT_LIGHTS; i++) {
                 result += calcPointLight(pointLights[i], norm, FragPos, viewDir, texColor);
         }
 
