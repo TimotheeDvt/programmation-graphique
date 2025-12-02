@@ -2,6 +2,7 @@
 #define CAMERA_H
 #include "glm/glm.hpp"
 #include "glm/gtc/constants.hpp"
+#include "Cube.h"
 
 class Camera {
     public:
@@ -46,6 +47,13 @@ class FPSCamera : public Camera {
         virtual void setPosition(const glm::vec3& position);
         virtual void rotate(float yaw, float pitch); // in degrees
         virtual void move(const glm::vec3& offsetPos);
+        void FPSCamera::jump();
+        void FPSCamera::applyPhysics(World& world, double elapsedTime);
+
+        glm::vec3 mVelocity;
+        bool mIsOnGround;
+        glm::vec3 mPlayerSize = glm::vec3(0.5f, 2.0f, 0.5f); // Width, Height, Depth
+
 
     private:
         void updateCameraVectors();

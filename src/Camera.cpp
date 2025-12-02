@@ -46,6 +46,10 @@ FPSCamera::FPSCamera(glm::vec3 position, float yaw, float pitch) {
         mYaw = yaw;
         mPitch = pitch;
     }
+    mVelocity = glm::vec3(0.0f);
+    mIsOnGround = false;
+    // mPlayerSize est initialisé dans le .h
+
     updateCameraVectors(); // IMPORTANT: Initialize camera vectors
 }
 
@@ -85,6 +89,75 @@ void FPSCamera::updateCameraVectors() {
     // Update target position for view matrix
     mTargetPos = mPosition + mLook;
 }
+
+void FPSCamera::jump() {
+    if (mIsOnGround) {
+        mIsOnGround = false;
+        mVelocity.y = 8.0f; // Puissance du saut
+    }
+}
+
+void FPSCamera::applyPhysics(World& world, double elapsedTime) {
+    const float GRAVITY = 20.0f;
+    const float FRICTION = 8.0f;
+
+    // 1. Appliquer la gravité
+    mVelocity.y -= GRAVITY * (float)elapsedTime;
+
+    // 2. Appliquer la friction (ralentissement horizontal)
+    mVelocity.x -= mVelocity.x * FRICTION * (float)elapsedTime;
+    mVelocity.z -= mVelocity.z * FRICTION * (float)elapsedTime;
+
+    // 3. Calculer la nouvelle position potentielle
+    glm::vec3 newPos = mPosition + mVelocity * (float)elapsedTime;
+
+    // 4. Détection et résolution des collisions (AABB)
+    glm::vec3 playerHalfSize = mPlayerSize / 2.0f;
+    mIsOnGround = false;
+
+    // Itérer sur les 8 coins de la boîte de collision du joueur
+    for (int i = 0; i < 8; ++i) {
+        glm::vec3 cornerOffset(
+            (i & 1) ? playerHalfSize.x : -playerHalfSize.x,
+            (i & 2) ? playerHalfSize.y : -playerHalfSize.y,
+            (i & 4) ? playerHalfSize.z : -playerHalfSize.z
+        );
+
+        // --- Collision sur l'axe Y ---
+        glm::vec3 yCollisionPoint = mPosition + cornerOffset;
+        yCollisionPoint.y = newPos.y + cornerOffset.y;
+        if (world.getBlockAt(yCollisionPoint) != BlockType::AIR) {
+            if (mVelocity.y < 0) { // Collision en tombant
+                mIsOnGround = true;
+            }
+            mVelocity.y = 0;
+            newPos.y = floor(yCollisionPoint.y) + ( (i & 2) ? 0.0f : 1.0f ) - cornerOffset.y;
+        }
+
+        // --- Collision sur l'axe X ---
+        glm::vec3 xCollisionPoint = mPosition + cornerOffset;
+        xCollisionPoint.x = newPos.x + cornerOffset.x;
+        if (world.getBlockAt(xCollisionPoint) != BlockType::AIR) {
+            mVelocity.x = 0;
+            newPos.x = floor(xCollisionPoint.x) + ( (i & 1) ? 0.0f : 1.0f ) - cornerOffset.x;
+        }
+
+        // --- Collision sur l'axe Z ---
+        glm::vec3 zCollisionPoint = mPosition + cornerOffset;
+        zCollisionPoint.z = newPos.z + cornerOffset.z;
+        if (world.getBlockAt(zCollisionPoint) != BlockType::AIR) {
+            mVelocity.z = 0;
+            newPos.z = floor(zCollisionPoint.z) + ( (i & 4) ? 0.0f : 1.0f ) - cornerOffset.z;
+        }
+    }
+
+    // 5. Mettre à jour la position
+    mPosition = newPos;
+
+    // Mettre à jour les vecteurs de la caméra après le déplacement
+    updateCameraVectors();
+}
+
 
 // OrbitCamera
 OrbitCamera::OrbitCamera()

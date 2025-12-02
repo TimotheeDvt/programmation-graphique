@@ -24,8 +24,9 @@ GLFWwindow* gWindow = NULL;
 bool gWireframe = false;
 
 FPSCamera fpsCamera(glm::vec3(0.0f, 20.0f, 20.0f));
+bool gIsFlying = false; // Pour basculer entre le mode physique et le mode vol
 const double ZOOM_SENSITIVITY = -3.0;
-float MOVE_SPEED = 20.0;
+float MOVE_SPEED = 30.0;
 const float MOUSE_SENSITIVITY = 0.1f;
 
 bool gLeftMouseButtonPressed = false;
@@ -382,6 +383,13 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                 case GLFW_KEY_8:         // select glass
                         gSelectedBlock = BlockType::GLASS;
                         break;
+                case GLFW_KEY_F:         // Toggle fly mode
+                        gIsFlying = !gIsFlying;
+                        // Si on passe en mode vol, on annule la vitesse verticale pour arrêter de tomber
+                        if (gIsFlying) {
+                                fpsCamera.mVelocity.y = 0;
+                        }
+                        break;
                 default:
                         break;
         }
@@ -422,31 +430,47 @@ void update(double elapsedTime) {
 
         glfwSetCursorPos(gWindow, gWindowWidth/2.0, gWindowHeight/2.0);
 
+        float physicsMoveSpeed = 1.0f; // Vitesse d'accélération au sol
         // Movement
         // if control is pressed, increase speed
         if (glfwGetKey(gWindow, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
-                MOVE_SPEED = 20.0f;
+                MOVE_SPEED = 80.0f; // Vitesse augmentée
+                physicsMoveSpeed = 2.5f;
         } else {
-                MOVE_SPEED = 8.0f;
+                MOVE_SPEED = 20.0f; // Vitesse de base
+                physicsMoveSpeed = 1.0f;
         }
 
-        if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getLook());
-        }
-        if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getLook());
-        }
-        if (glfwGetKey(gWindow, GLFW_KEY_A) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getRight());
-        }
-        if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getRight());
-        }
-        if (glfwGetKey(gWindow, GLFW_KEY_SPACE) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, 1, 0));
-        }
-        if (glfwGetKey(gWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-                fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, -1, 0));
+        if (gIsFlying) {
+                // --- MODE VOL (CRÉATIF) ---
+                // Mouvement direct, sans physique
+                fpsCamera.mVelocity = glm::vec3(0.0f); // Annule toute vitesse résiduelle
+
+                if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS)
+                        fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getLook());
+                if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS)
+                        fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getLook());
+                if (glfwGetKey(gWindow, GLFW_KEY_A) == GLFW_PRESS)
+                        fpsCamera.move(MOVE_SPEED * (float)elapsedTime * -fpsCamera.getRight());
+                if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS)
+                        fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getRight());
+                if (glfwGetKey(gWindow, GLFW_KEY_SPACE) == GLFW_PRESS)
+                        fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, 1, 0));
+                if (glfwGetKey(gWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+                        fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, -1, 0));
+
+        } else {
+                // --- MODE PHYSIQUE (SURVIE) ---
+                glm::vec3 moveDirection(0.0f);
+
+                if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS) moveDirection += fpsCamera.getLook();
+                if (glfwGetKey(gWindow, GLFW_KEY_S) == GLFW_PRESS) moveDirection -= fpsCamera.getLook();
+                if (glfwGetKey(gWindow, GLFW_KEY_A) == GLFW_PRESS) moveDirection -= fpsCamera.getRight();
+                if (glfwGetKey(gWindow, GLFW_KEY_D) == GLFW_PRESS) moveDirection += fpsCamera.getRight();
+                if (glfwGetKey(gWindow, GLFW_KEY_SPACE) == GLFW_PRESS) fpsCamera.jump();
+
+                fpsCamera.mVelocity += glm::vec3(moveDirection.x, 0, moveDirection.z) * physicsMoveSpeed;
+                fpsCamera.applyPhysics(world, elapsedTime);
         }
 
         // Raycasting and block interaction
