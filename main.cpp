@@ -45,7 +45,7 @@ void initCrosshair();
 void cleanupCrosshair();
 
 World world;
-BlockType gSelectedBlock = BlockType::STONE;
+BlockType gSelectedBlock = BlockType::REDSTONE;
 
 GLuint crosshairVAO = 0;
 GLuint crosshairVBO = 0;
@@ -134,6 +134,12 @@ int main() {
         double lastTime = glfwGetTime();
 
         while (!glfwWindowShouldClose(gWindow)) {
+                redstoneLights = world.getRedstoneLightPositions();
+                frameLights.clear();
+                for (const auto& pos : redstoneLights) {
+                        if (frameLights.size() >= MAX_POINT_LIGHTS) break;
+                        frameLights.push_back(pos);
+                }
                 showFPS(gWindow);
 
                 double currentTime = glfwGetTime();
@@ -178,8 +184,8 @@ int main() {
 
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
                         minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.01f, 0.0f, 0.0f));
-                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(2.0f, 0.2f, 0.2f));
-                        minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(1.0f, 0.2f, 0.2f));
+                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
+                        minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
                         minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
                         minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
@@ -338,11 +344,23 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                         }
                         break;
-                case GLFW_KEY_2:         // select stone
-                        gSelectedBlock = BlockType::STONE;
+                case GLFW_KEY_2:         // select redstone
+                        gSelectedBlock = BlockType::REDSTONE;
                         break;
                 case GLFW_KEY_3:         // select dirt
                         gSelectedBlock = BlockType::DIRT;
+                        break;
+                case GLFW_KEY_4:         // select stone
+                        gSelectedBlock = BlockType::STONE;
+                        break;
+                case GLFW_KEY_5:         // select wood
+                        gSelectedBlock = BlockType::WOOD;
+                        break;
+                case GLFW_KEY_6:         // select leaves
+                        gSelectedBlock = BlockType::LEAVES;
+                        break;
+                case GLFW_KEY_7:         // select torch
+                        gSelectedBlock = BlockType::TORCH;
                         break;
                 default:
                         break;

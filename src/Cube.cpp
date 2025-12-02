@@ -699,26 +699,19 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
-glm::vec3 basePos = chunkPos + glm::vec3(x, y, z);
+                                                glm::vec3 basePos = chunkPos + glm::vec3(x, y, z);
 
                                                 // Nous ajoutons 6 points lumineux, chacun au centre de l'une des 6 faces
                                                 // La position est définie par le coin minimum (basePos) + un offset de (0.5, 0.5, 0.5)
                                                 // pour centrer sur la face.
 
-                                                // +X face (position X=x+1)
-                                                positions.push_back(basePos + glm::vec3(1.0f, 0.5f, 0.5f));
-                                                // -X face (position X=x)
-                                                positions.push_back(basePos + glm::vec3(0.0f, 0.5f, 0.5f));
+                                                positions.push_back(basePos + glm::vec3(0.0f, 0.0f, 1.01f));
+                                                positions.push_back(basePos + glm::vec3(0.0f, 1.01f, 0.0f));
+                                                positions.push_back(basePos + glm::vec3(1.01f, 0.0f, 0.0f));
 
-                                                // +Y face (position Y=y+1)
-                                                positions.push_back(basePos + glm::vec3(0.5f, 1.0f, 0.5f));
-                                                // -Y face (position Y=y)
-                                                positions.push_back(basePos + glm::vec3(0.5f, 0.0f, 0.5f));
-
-                                                // +Z face (position Z=z+1)
-                                                positions.push_back(basePos + glm::vec3(0.5f, 0.5f, 1.0f));
-                                                // -Z face (position Z=z)
-                                                positions.push_back(basePos + glm::vec3(0.5f, 0.5f, 0.0f));
+                                                positions.push_back(basePos + glm::vec3(0.0f, 0.0f, -1.01f));
+                                                positions.push_back(basePos + glm::vec3(0.0f, -1.01f, 0.0f));
+                                                positions.push_back(basePos + glm::vec3(-1.01f, 0.0f, 0.0f));
                                         }
                                 }
                         }
