@@ -7,6 +7,10 @@ std::vector<CubeVertex> Cube::vertices;
 std::vector<unsigned int> Cube::indices;
 bool Cube::meshDataInitialized = false;
 
+std::map<BlockType, BlockTexturePaths> Chunk::m_textureConfig;
+std::map<std::string, int> Chunk::m_pathToTextureIndex;
+int Chunk::m_nextTextureIndex = 0;
+
 Cube::Cube() : mVAO(0), mVBO(0), mEBO(0) {
         if (!meshDataInitialized) {
                 initializeMeshData();
@@ -22,40 +26,40 @@ Cube::~Cube() {
 void Cube::initializeMeshData() {
         // Define cube vertices with normals and texture coordinates
         // Front face (+Z)
-        vertices.push_back({{-0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 0.0f}});
-        vertices.push_back({{ 0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {1.0f, 0.0f}});
-        vertices.push_back({{ 0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {1.0f, 1.0f}});
-        vertices.push_back({{-0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{-0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {1.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {1.0f, 1.0f, 0.0f}});
+        vertices.push_back({{-0.5f,  0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 1.0f, 0.0f}});
 
         // Back face (-Z)
-        vertices.push_back({{ 0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {0.0f, 0.0f}});
-        vertices.push_back({{-0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {1.0f, 0.0f}});
-        vertices.push_back({{-0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {1.0f, 1.0f}});
-        vertices.push_back({{ 0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{ 0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {0.0f, 0.0f, 0.0f}});
+        vertices.push_back({{-0.5f, -0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {1.0f, 0.0f, 0.0f}});
+        vertices.push_back({{-0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {1.0f, 1.0f, 0.0f}});
+        vertices.push_back({{ 0.5f,  0.5f, -0.5f}, { 0.0f,  0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}});
 
         // Top face (+Y)
-        vertices.push_back({{-0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f}, {0.0f, 0.0f}});
-        vertices.push_back({{ 0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f}, {1.0f, 0.0f}});
-        vertices.push_back({{ 0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f}, {1.0f, 1.0f}});
-        vertices.push_back({{-0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{-0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f}, {0.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f,  0.5f,  0.5f}, { 0.0f,  1.0f,  0.0f}, {1.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f}, {1.0f, 1.0f, 0.0f}});
+        vertices.push_back({{-0.5f,  0.5f, -0.5f}, { 0.0f,  1.0f,  0.0f}, {0.0f, 1.0f, 0.0f}});
 
         // Bottom face (-Y)
-        vertices.push_back({{-0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f}, {0.0f, 0.0f}});
-        vertices.push_back({{ 0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f}, {1.0f, 0.0f}});
-        vertices.push_back({{ 0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f}, {1.0f, 1.0f}});
-        vertices.push_back({{-0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{-0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f}, {0.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f, -0.5f, -0.5f}, { 0.0f, -1.0f,  0.0f}, {1.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f}, {1.0f, 1.0f, 0.0f}});
+        vertices.push_back({{-0.5f, -0.5f,  0.5f}, { 0.0f, -1.0f,  0.0f}, {0.0f, 1.0f, 0.0f}});
 
         // Right face (+X)
-        vertices.push_back({{ 0.5f, -0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f}, {0.0f, 0.0f}});
-        vertices.push_back({{ 0.5f, -0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f}, {1.0f, 0.0f}});
-        vertices.push_back({{ 0.5f,  0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f}, {1.0f, 1.0f}});
-        vertices.push_back({{ 0.5f,  0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{ 0.5f, -0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f}, {0.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f, -0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f}, {1.0f, 0.0f, 0.0f}});
+        vertices.push_back({{ 0.5f,  0.5f, -0.5f}, { 1.0f,  0.0f,  0.0f}, {1.0f, 1.0f, 0.0f}});
+        vertices.push_back({{ 0.5f,  0.5f,  0.5f}, { 1.0f,  0.0f,  0.0f}, {0.0f, 1.0f, 0.0f}});
 
         // Left face (-X)
-        vertices.push_back({{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 0.0f}});
-        vertices.push_back({{-0.5f, -0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 0.0f}});
-        vertices.push_back({{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 1.0f}});
-        vertices.push_back({{-0.5f,  0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 1.0f}});
+        vertices.push_back({{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 0.0f, 0.0f}});
+        vertices.push_back({{-0.5f, -0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 0.0f, 0.0f}});
+        vertices.push_back({{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}, {1.0f, 1.0f, 0.0f}});
+        vertices.push_back({{-0.5f,  0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}, {0.0f, 1.0f, 0.0f}});
 
         // Define indices for triangles (2 triangles per face)
         for (int i = 0; i < 6; i++) {
@@ -97,7 +101,7 @@ void Cube::setupMesh() {
         glEnableVertexAttribArray(1);
 
         // TexCoords
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(CubeVertex), (void*)offsetof(CubeVertex, texCoords));
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(CubeVertex), (void*)offsetof(CubeVertex, texCoords));
         glEnableVertexAttribArray(2);
 
         glBindVertexArray(0);
@@ -127,6 +131,9 @@ const std::vector<unsigned int>& Cube::getIndices() {
 Chunk::Chunk(int chunkX, int chunkZ)
 : mChunkX(chunkX), mChunkZ(chunkZ), mVAO(0), mVBO(0), mVertexCount(0) {
         // Initialize all blocks to air
+        if (m_textureConfig.empty()) { // S'assurer que la configuration est faite une seule fois
+                initializeTextureConfig();
+        }
         for (int x = 0; x < CHUNK_SIZE; x++) {
                 for (int y = 0; y < CHUNK_HEIGHT; y++) {
                         for (int z = 0; z < CHUNK_SIZE; z++) {
@@ -230,6 +237,85 @@ BlockType Chunk::getBlock(int x, int y, int z) const {
         return mBlocks[x][y][z];
 }
 
+void Chunk::initializeTextureConfig() {
+        // Helper lambda pour obtenir un index unique pour un chemin de texture
+        auto getIndex = [](const std::string& path) -> int {
+                if (m_pathToTextureIndex.find(path) == m_pathToTextureIndex.end()) {
+                m_pathToTextureIndex[path] = m_nextTextureIndex++;
+                }
+                return m_pathToTextureIndex[path];
+        };
+
+        // --- Configuration des Textures (selon votre demande) ---
+
+        // BLOCK_TYPE::GRASS
+        m_textureConfig[BlockType::GRASS] = {
+                "./textures/grass-top.png",   // Top
+                "./textures/dirt.png",        // Bottom
+                "./textures/grass-side.png",  // Side
+                ""
+        };
+
+        // BLOCK_TYPE::WOOD
+        m_textureConfig[BlockType::WOOD] = {
+                "./textures/wood-top.png",    // Top
+                "./textures/wood-top.png",    // Bottom
+                "./textures/wood-side.png",   // Side (J'utilise wood-side, plus logique que grass-side)
+                ""
+        };
+
+        // BLOCK_TYPE::DIRT
+        m_textureConfig[BlockType::DIRT] = {
+                "./textures/dirt.png",
+                "./textures/dirt.png",
+                "./textures/dirt.png",
+                ""
+        };
+
+        // BLOCK_TYPE::STONE (Utilisation de .png comme dans vos fichiers)
+        m_textureConfig[BlockType::STONE] = {
+                "./textures/stone.png",
+                "./textures/stone.png",
+                "./textures/stone.png",
+                ""
+        };
+
+        // BLOCK_TYPE::REDSTONE
+        m_textureConfig[BlockType::REDSTONE] = {
+                "./textures/redstone.png",
+                "./textures/redstone.png",
+                "./textures/redstone.png",
+                ""
+        };
+
+        // BLOCK_TYPE::LEAVES
+        m_textureConfig[BlockType::LEAVES] = {
+                "./textures/leaves_2.png",
+                "./textures/leaves_2.png",
+                "./textures/leaves_2.png",
+                ""
+        };
+
+        // BLOCK_TYPE::TORCH
+        m_textureConfig[BlockType::TORCH] = {
+                "", "", "",
+                "./textures/torch.png" // Texture spéciale
+        };
+
+        // --- Fin de la Configuration ---
+
+        // Récupérer les index pour tous les chemins de texture
+        for (const auto& pair : m_textureConfig) {
+                getIndex(pair.second.top);
+                getIndex(pair.second.bottom);
+                getIndex(pair.second.side);
+                getIndex(pair.second.special);
+        }
+        if (m_pathToTextureIndex.count("")) { // Supprimer le chemin vide s'il existe
+                m_pathToTextureIndex.erase("");
+        }
+}
+
 void World::localToChunkCoords(int worldX, int worldY, int worldZ,
                                int& chunkX, int& chunkZ,
                                int& localX, int& localY, int& localZ) const
@@ -285,59 +371,93 @@ bool Chunk::shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const 
         return true;
 }
 
-glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int corner) {
-        // Texture atlas is 1024x512, each texture is 256x256
-        // UV coordinates: 0.0 to 1.0 maps to entire atlas
-        // Each texture takes up: 256/1024 = 0.25 horizontally, 256/512 = 0.5 vertically
+// glm::vec2 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int corner) {
+//         // Texture atlas is 1024x512, each texture is 256x256
+//         // UV coordinates: 0.0 to 1.0 maps to entire atlas
+//         // Each texture takes up: 256/1024 = 0.25 horizontally, 256/512 = 0.5 vertically
 
-        float u = 0.0f, v = 0.0f;
-        float texSizeU = 0.25f;  // 256/1024
-        float texSizeV = 0.5f;   // 256/512
+//         float u = 0.0f, v = 0.0f;
+//         float texSizeU = 0.25f;  // 256/1024
+//         float texSizeV = 0.5f;   // 256/512
 
-        // Layout: Row 0: [Grass Top] [Grass Side] [Dirt] [Stone]
-        //         Row 1: [Redstone] [Wood] [Leaves] [Empty]
+//         // Layout: Row 0: [Grass Top] [Grass Side] [Dirt] [Stone]
+//         //         Row 1: [Redstone] [Wood] [Leaves] [Empty]
 
-        switch (type) {
-                case BlockType::GRASS:
-                        if (normal.y > 0.5f) { // Top face
-                                u = 0.0f; v = 0.5f; // Grass top (0,0)
-                        } else if (normal.y < -0.5f) { // Bottom face
-                                u = 0.5f; v = 0.5f; // (2,0)
-                        } else { // Side faces
-                                u = 0.25f; v = 0.5f; // (2,0)
-                        }
-                        break;
-                case BlockType::DIRT:
-                        u = 0.5f; v = 0.5f; // (2,0)
-                        break;
-                case BlockType::STONE:
-                        u = 0.75f; v = 0.5f; // (3,0)
-                        break;
-                case BlockType::REDSTONE:
-                        u = 0.0f; v = 0.0f; // (0,1)
-                        break;
-                case BlockType::WOOD:
-                        u = 0.25f; v = 0.0f; // (1,1)
-                        break;
-                case BlockType::LEAVES:
-                        u = 0.5f; v = 0.0f; // (2,1)
-                        break;
-                case BlockType::AIR:
-                        u = 0.75f; v = 0.0f; // (2,1)
-                        break;
-                case BlockType::TORCH:
-                        u = 0.5f; v = 0.0f; // (2,1)
-                        break;
-                default:
-                        u = 0.75f; v = 0.0f; // (2,1)
-                        break;
+//         switch (type) {
+//                 case BlockType::GRASS:
+//                         if (normal.y > 0.5f) { // Top face
+//                                 u = 0.0f; v = 0.5f; // Grass top (0,0)
+//                         } else if (normal.y < -0.5f) { // Bottom face
+//                                 u = 0.5f; v = 0.5f; // (2,0)
+//                         } else { // Side faces
+//                                 u = 0.25f; v = 0.5f; // (2,0)
+//                         }
+//                         break;
+//                 case BlockType::DIRT:
+//                         u = 0.5f; v = 0.5f; // (2,0)
+//                         break;
+//                 case BlockType::STONE:
+//                         u = 0.75f; v = 0.5f; // (3,0)
+//                         break;
+//                 case BlockType::REDSTONE:
+//                         u = 0.0f; v = 0.0f; // (0,1)
+//                         break;
+//                 case BlockType::WOOD:
+//                         u = 0.25f; v = 0.0f; // (1,1)
+//                         break;
+//                 case BlockType::LEAVES:
+//                         u = 0.5f; v = 0.0f; // (2,1)
+//                         break;
+//                 case BlockType::AIR:
+//                         u = 0.75f; v = 0.0f; // (2,1)
+//                         break;
+//                 case BlockType::TORCH:
+//                         u = 0.5f; v = 0.0f; // (2,1)
+//                         break;
+//                 default:
+//                         u = 0.75f; v = 0.0f; // (2,1)
+//                         break;
+//         }
+
+//         // Add corner offset - each texture is 0.25 x 0.5
+//         if (corner == 1 || corner == 2) u += texSizeU;
+//         if (corner == 2 || corner == 3) v += texSizeV;
+
+//         return glm::vec2(u, v);
+// }
+
+// Dans src/Cube.cpp (Remplacer la version existante)
+glm::vec3 Chunk::getTextureCoords(BlockType type, const glm::vec3& normal, int corner) {
+        // 1. Déterminer le chemin de texture basé sur BlockType et Normal
+        std::string path = "";
+        if (m_textureConfig.count(type)) {
+                const auto& config = m_textureConfig.at(type);
+
+                if (glm::abs(normal.y) > 0.5f) {
+                        path = (normal.y > 0.5f) ? config.top : config.bottom;
+                } else {
+                        path = config.side;
+                }
         }
 
-        // Add corner offset - each texture is 0.25 x 0.5
-        if (corner == 1 || corner == 2) u += texSizeU;
-        if (corner == 2 || corner == 3) v += texSizeV;
+        // 2. Récupérer l'index de texture
+        int textureIndex = -1;
+        if (m_pathToTextureIndex.count(path) && path != "") {
+                textureIndex = m_pathToTextureIndex.at(path);
+        }
 
-        return glm::vec2(u, v);
+        // 3. Déterminer les UV standards (0.0 à 1.0)
+        glm::vec2 uv;
+        switch (corner) {
+                case 0: uv = glm::vec2(0.0f, 0.0f); break;
+                case 1: uv = glm::vec2(1.0f, 0.0f); break;
+                case 2: uv = glm::vec2(1.0f, 1.0f); break;
+                case 3: uv = glm::vec2(0.0f, 1.0f); break;
+                default: uv = glm::vec2(0.0f, 0.0f); break;
+        }
+
+        // Retourner vec3(u, v, textureIndex)
+        return glm::vec3(uv.x, uv.y, (float)textureIndex);
 }
 
 void Chunk::addFace(int x, int y, int z, const glm::vec3& normal, BlockType type) {
@@ -493,6 +613,13 @@ void Chunk::addTorchMesh(int x, int y, int z) {
         quads[1].p[3] = worldPos + glm::vec3(-radius, topY,  radius);
         quads[1].normal = glm::normalize(glm::vec3(1, 0,-1));
 
+        int textureIndex = -1;
+        const auto& config = m_textureConfig.at(BlockType::TORCH);
+        if (m_pathToTextureIndex.count(config.special)) {
+                textureIndex = m_pathToTextureIndex.at(config.special);
+        }
+        float texIdx = (float)textureIndex;
+
         for (int q = 0; q < 2; ++q) {
                 glm::vec3 n = quads[q].normal;
 
@@ -501,31 +628,32 @@ void Chunk::addTorchMesh(int x, int y, int z) {
                 // Triangle 1: 0,1,2
                 v[0].position = quads[q].p[0];
                 v[0].normal   = n;
-                v[0].texCoords = getTextureCoords(BlockType::TORCH, n, 0);
+                v[0].texCoords = glm::vec3(0.0f, 0.0f, texIdx); // Ajout de l'index
 
                 v[1].position = quads[q].p[1];
                 v[1].normal   = n;
-                v[1].texCoords = getTextureCoords(BlockType::TORCH, n, 1);
+                v[1].texCoords = glm::vec3(1.0f, 0.0f, texIdx); // Ajout de l'index
 
                 v[2].position = quads[q].p[2];
                 v[2].normal   = n;
-                v[2].texCoords = getTextureCoords(BlockType::TORCH, n, 2);
+                v[2].texCoords = glm::vec3(1.0f, 1.0f, texIdx); // Ajout de l'index
 
                 // Triangle 2: 0,2,3
                 v[3].position = quads[q].p[0];
                 v[3].normal   = n;
-                v[3].texCoords = getTextureCoords(BlockType::TORCH, n, 0);
+                v[3].texCoords = glm::vec3(0.0f, 0.0f, texIdx); // Ajout de l'index
 
                 v[4].position = quads[q].p[2];
                 v[4].normal   = n;
-                v[4].texCoords = getTextureCoords(BlockType::TORCH, n, 2);
+                v[4].texCoords = glm::vec3(1.0f, 1.0f, texIdx); // Ajout de l'index
 
                 v[5].position = quads[q].p[3];
                 v[5].normal   = n;
-                v[5].texCoords = getTextureCoords(BlockType::TORCH, n, 3);
+                v[5].texCoords = glm::vec3(0.0f, 1.0f, texIdx); // Ajout de l'index
 
-                for (int i = 0; i < 6; ++i)
+                for (int i = 0; i < 6; ++i) {
                         mVertices.push_back(v[i]);
+                }
         }
 }
 

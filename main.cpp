@@ -13,6 +13,9 @@
 #include "./src/Camera.h"
 #include "./src/Cube.h"
 
+#define MAX_BLOCK_TEXTURES 16
+Texture2D gBlockTextures[MAX_BLOCK_TEXTURES];
+
 const char* APP_TITLE = "Minecraft Clone - OpenGL Demo";
 int gWindowWidth = 1280;
 int gWindowHeight = 720;
@@ -89,12 +92,28 @@ int main() {
         ShaderProgram minecraftShader;
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
 
-        // Load block texture atlas
-        Texture2D blockTexture;
-        blockTexture.loadTexture("./textures/blocks.png", true);
-
         // Generate world
         world.generate(1); // 4 chunk render distance
+
+        const auto& pathToIndex = Chunk::m_pathToTextureIndex;
+        int numTextures = 0;
+
+        for (const auto& pair : pathToIndex) {
+                const std::string& path = pair.first;
+                int index = pair.second;
+
+                if (index >= MAX_BLOCK_TEXTURES) {
+                        std::cerr << "ERREUR: Trop de textures! Max est " << MAX_BLOCK_TEXTURES << std::endl;
+                        break;
+                }
+
+                if (gBlockTextures[index].loadTexture(path, true)) {
+                        numTextures++;
+                        // NOTE: La taille de numTextures devrait être égale à Chunk::m_nextTextureIndex
+                } else {
+                        std::cerr << "Échec du chargement de la texture: " << path << std::endl;
+                }
+        }
 
         std::cout << "World generated successfully!" << std::endl;
 
@@ -127,6 +146,7 @@ int main() {
 
                 // Use shader
                 minecraftShader.use();
+
                 minecraftShader.setUniform("model", model);
                 minecraftShader.setUniform("view", view);
                 minecraftShader.setUniform("projection", projection);
@@ -162,9 +182,16 @@ int main() {
                 minecraftShader.setUniform("material.shininess", 8.0f);
 
                 // Draw world
-                blockTexture.bind(0);
+                for (int i = 0; i < numTextures; i++) {
+                        gBlockTextures[i].bind(i); // Bind la texture 'i' à l'unité GL_TEXTURE'i'
+                        // Envoyer l'index (i) à l'uniforme du sampler dans le shader
+                        std::string samplerName = "material.diffuseMaps[" + std::to_string(i) + "]";
+                        minecraftShader.setUniformSampler(samplerName.c_str(), i);
+                }
                 world.draw();
-                blockTexture.unbind(0);
+                for (int i = 0; i < numTextures; i++) {
+                        gBlockTextures[i].unbind(i);
+                }
 
                 // Draw debug look vector and current hit markers
                 {

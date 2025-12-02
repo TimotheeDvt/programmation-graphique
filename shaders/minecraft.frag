@@ -1,8 +1,9 @@
 #version 330 core
 
+#define MAX_BLOCK_TEXTURES 16
 struct Material {
         vec3 ambient;
-        sampler2D diffuseMap;
+        sampler2D diffuseMaps[MAX_BLOCK_TEXTURES];
         vec3 specular;
         float shininess;
 };
@@ -27,7 +28,7 @@ struct PointLight {
 
 #define MAX_POINT_LIGHTS 50
 
-in vec2 TexCoord;
+in vec3 TexCoord;
 in vec3 Normal;
 in vec3 FragPos;
 
@@ -46,13 +47,22 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, v
 void main() {
         vec3 norm = normalize(Normal);
         vec3 viewDir = normalize(viewPos - FragPos);
-        vec3 texColor = vec3(texture(material.diffuseMap, TexCoord));
 
-        // Directional lighting (sun/moon)
-        vec3 result = calcDirectionalLight(dirLight, norm, viewDir, texColor);
+        int texIndex = int(TexCoord.z);
+        vec2 uv = TexCoord.xy;
+
+        vec3 texColor;
+        // Sélection de la bonne texture
+        if (texIndex >= 0 && texIndex < MAX_BLOCK_TEXTURES) {
+                texColor = vec3(texture(material.diffuseMaps[texIndex], uv)); // Utilisation du tableau
+        } else {
+            // Couleur de débogage (e.g. magenta) si l'index est invalide
+                texColor = vec3(1.0f, 0.0f, 1.0f);
+        }
 
         // Point lights (redstone)
-        for (int i = 0; i < numPointLights && i < MAX_POINT_LIGHTS; i++) {
+        vec3 result = calcDirectionalLight(dirLight, norm, viewDir, texColor);
+        for (int i = 0; i < numPointLights && i < MAX_BLOCK_TEXTURES; i++) {
                 result += calcPointLight(pointLights[i], norm, FragPos, viewDir, texColor);
         }
 

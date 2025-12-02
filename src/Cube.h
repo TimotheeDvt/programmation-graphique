@@ -4,6 +4,8 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <vector>
+#include <string>
+#include <map>
 
 enum class BlockType {
 	AIR,
@@ -16,10 +18,17 @@ enum class BlockType {
 	TORCH
 };
 
+struct BlockTexturePaths {
+    std::string top;
+    std::string bottom;
+    std::string side;
+    std::string special; // Utilisé pour les blocs non-cubiques comme TORCH
+};
+
 struct CubeVertex {
 	glm::vec3 position;
 	glm::vec3 normal;
-	glm::vec2 texCoords;
+	glm::vec3 texCoords;
 };
 
 class Cube {
@@ -63,6 +72,10 @@ public:
 
 	glm::vec3 getWorldPosition() const { return glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE); }
 
+	static std::map<BlockType, BlockTexturePaths> m_textureConfig;
+    static std::map<std::string, int> m_pathToTextureIndex;
+    static int m_nextTextureIndex;
+
 private:
 	int mChunkX, mChunkZ;
 	BlockType mBlocks[CHUNK_SIZE][CHUNK_HEIGHT][CHUNK_SIZE];
@@ -76,7 +89,10 @@ private:
 	bool shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const;
 	void addFace(int x, int y, int z, const glm::vec3& normal, BlockType type);
     void addTorchMesh(int x, int y, int z);
-	glm::vec2 getTextureCoords(BlockType type, const glm::vec3& normal, int corner);
+
+	static void initializeTextureConfig();
+
+	glm::vec3 getTextureCoords(BlockType type, const glm::vec3& normal, int corner);
 };
 
 struct RaycastHit {
