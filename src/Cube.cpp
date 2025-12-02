@@ -699,23 +699,26 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
                         for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
-                                                // Block center (offset by 0.5 since blocks are 1 unit cubes centered at integer coords)
-                                                glm::vec3 blockCenter = chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f);
-                                                // Add one light at the center of each face (6 faces)
-                                                std::cout << "Redstone block at (" << blockCenter.x << ", " << blockCenter.y << ", " << blockCenter.z << ")\n";
-                                                const float faceOffset = 0.51f; // slightly outside the cube face
-                                                // +X face
-                                                positions.push_back(blockCenter + glm::vec3(faceOffset, 0.0f, 0.0f));
-                                                // -X face
-                                                positions.push_back(blockCenter + glm::vec3(-faceOffset, 0.0f, 0.0f));
-                                                // +Y face (top)
-                                                positions.push_back(blockCenter + glm::vec3(0.0f, faceOffset, 0.0f));
-                                                // -Y face (bottom)
-                                                positions.push_back(blockCenter + glm::vec3(0.0f, -faceOffset, 0.0f));
-                                                // +Z face
-                                                positions.push_back(blockCenter + glm::vec3(0.0f, 0.0f, faceOffset));
-                                                // -Z face
-                                                positions.push_back(blockCenter + glm::vec3(0.0f, 0.0f, -faceOffset));
+glm::vec3 basePos = chunkPos + glm::vec3(x, y, z);
+
+                                                // Nous ajoutons 6 points lumineux, chacun au centre de l'une des 6 faces
+                                                // La position est définie par le coin minimum (basePos) + un offset de (0.5, 0.5, 0.5)
+                                                // pour centrer sur la face.
+
+                                                // +X face (position X=x+1)
+                                                positions.push_back(basePos + glm::vec3(1.0f, 0.5f, 0.5f));
+                                                // -X face (position X=x)
+                                                positions.push_back(basePos + glm::vec3(0.0f, 0.5f, 0.5f));
+
+                                                // +Y face (position Y=y+1)
+                                                positions.push_back(basePos + glm::vec3(0.5f, 1.0f, 0.5f));
+                                                // -Y face (position Y=y)
+                                                positions.push_back(basePos + glm::vec3(0.5f, 0.0f, 0.5f));
+
+                                                // +Z face (position Z=z+1)
+                                                positions.push_back(basePos + glm::vec3(0.5f, 0.5f, 1.0f));
+                                                // -Z face (position Z=z)
+                                                positions.push_back(basePos + glm::vec3(0.5f, 0.5f, 0.0f));
                                         }
                                 }
                         }

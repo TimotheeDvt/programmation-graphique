@@ -177,8 +177,8 @@ int main() {
                         // std::cout << "pos: " << frameLights[i].x << ", " << frameLights[i].y << ", " << frameLights[i].z << std::endl;
 
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(1.0f, 0.0f, 0.0f));
-                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.01f, 0.0f, 0.0f));
+                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(2.0f, 0.2f, 0.2f));
                         minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(1.0f, 0.2f, 0.2f));
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
                         minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
