@@ -28,7 +28,8 @@ struct PointLight {
 
 #define MAX_POINT_LIGHTS 50
 
-in vec3 TexCoord;
+flat in int TexIndex; // CORRECTION: Ajout du point-virgule
+in vec2 TexCoord;
 in vec3 Normal;
 in vec3 FragPos;
 
@@ -48,20 +49,22 @@ void main() {
         vec3 norm = normalize(Normal);
         vec3 viewDir = normalize(viewPos - FragPos);
 
-        int texIndex = int(TexCoord.z);
-        vec2 uv = TexCoord.xy;
+        vec2 uv = TexCoord;
 
         vec3 texColor;
         // Sélection de la bonne texture
-        if (texIndex >= 0 && texIndex < MAX_BLOCK_TEXTURES) {
-                texColor = vec3(texture(material.diffuseMaps[texIndex], uv)); // Utilisation du tableau
+        // CORRECTION: Utilisation de 'TexIndex' (majuscule) qui est la variable 'flat in'
+        if (TexIndex >= 0 && TexIndex < MAX_BLOCK_TEXTURES) {
+                texColor = vec3(texture(material.diffuseMaps[TexIndex], uv));
         } else {
-            // Couleur de débogage (e.g. magenta) si l'index est invalide
+                // Couleur de débogage (e.g. magenta) si l'index est invalide
                 texColor = vec3(1.0f, 0.0f, 1.0f);
         }
 
-        // Point lights (redstone)
+        // Directional lighting (sun/moon)
         vec3 result = calcDirectionalLight(dirLight, norm, viewDir, texColor);
+
+        // Point lights (redstone)
         for (int i = 0; i < numPointLights && i < MAX_BLOCK_TEXTURES; i++) {
                 result += calcPointLight(pointLights[i], norm, FragPos, viewDir, texColor);
         }
