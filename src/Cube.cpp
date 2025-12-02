@@ -147,7 +147,6 @@ Chunk::~Chunk() {
         glDeleteVertexArrays(1, &mVAO);
         glDeleteBuffers(1, &mVBO);
 }
-int countRedstone = 0;
 
 void Chunk::generate() {
         std::mt19937 rng(mChunkX * 928371 + mChunkZ * 1231237);
@@ -176,17 +175,16 @@ void Chunk::generate() {
                                 else if (y == height - 1) {
                                         mBlocks[x][y][z] = BlockType::GRASS; // surface
                                 }
-                                else {
+                                else if (mBlocks[x][y][z] != BlockType::LEAVES) {
                                         mBlocks[x][y][z] = BlockType::AIR;
                                 }
                         }
 
-                        if (dist(rng) < 0.01f && height + 1 < CHUNK_HEIGHT - 1 && countRedstone == 0) {
+                        if (dist(rng) < 0.00f && height + 1 < CHUNK_HEIGHT - 1) {
                                 mBlocks[x][height + 1][z] = BlockType::REDSTONE;
-                                countRedstone++;
                         }
 
-                        if (dist(rng) < 0.01f && height < CHUNK_HEIGHT - 7) {  // 3% chance, need room for tree
+                        if (dist(rng) < 0.01f && height < CHUNK_HEIGHT - 7 && x > 0 && x < CHUNK_SIZE - 3 && z > 0 && z < CHUNK_SIZE - 3) {  // 3% chance, need room for tree
                                 // Check if this position has grass
                                 if (mBlocks[x][height - 1][z] != BlockType::GRASS) {
                                         continue;
@@ -225,8 +223,28 @@ void Chunk::generate() {
                                 }
 
                                 // Build leaves (3D spherical blob)
-                                int leafTop = height + trunkHeight;
-                                mBlocks[x][leafTop][z] = BlockType::LEAVES;
+                                int leafTop = height + trunkHeight - 1;
+                                for (int lx = -2; lx <= 2; lx++) {
+                                        for (int ly = -2; ly <= 2; ly++) {
+                                                for (int lz = -2; lz <= 2; lz++) {
+                                                        float distToCenter = sqrtf(lx * lx + ly * ly + lz * lz);
+                                                        if (distToCenter < 3.0f) { // sphere radius
+                                                                int leafX = x + lx;
+                                                                int leafY = leafTop + ly;
+                                                                int leafZ = z + lz;
+
+                                                                if (leafX >= 0 && leafX < CHUNK_SIZE &&
+                                                                    leafY >= 0 && leafY < CHUNK_HEIGHT &&
+                                                                    leafZ >= 0 && leafZ < CHUNK_SIZE) {
+                                                                        // Only place leaves if the block is air or undefined
+                                                                        if (mBlocks[leafX][leafY][leafZ] == BlockType::AIR) {
+                                                                                mBlocks[leafX][leafY][leafZ] = BlockType::LEAVES;
+                                                                        }
+                                                                }
+                                                        }
+                                                }
+                                        }
+                                }
                         }
                 }
         }
@@ -643,6 +661,14 @@ World::~World() {
 }
 
 void World::generate(int renderDistance) {
+        if (renderDistance == 1) {
+                Chunk* chunk = new Chunk(0, 0);
+                chunk->generate();
+                chunk->buildMesh();
+                mChunks.push_back(chunk);
+                return;
+        }
+
         for (int x = -renderDistance; x <= renderDistance; x++) {
                 for (int z = -renderDistance; z <= renderDistance; z++) {
                         Chunk* chunk = new Chunk(x, z);
