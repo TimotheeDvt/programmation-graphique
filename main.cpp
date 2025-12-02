@@ -25,7 +25,7 @@ bool gWireframe = false;
 
 FPSCamera fpsCamera(glm::vec3(0.0f, 20.0f, 20.0f));
 const double ZOOM_SENSITIVITY = -3.0;
-float MOVE_SPEED = 13.0;
+float MOVE_SPEED = 20.0;
 const float MOUSE_SENSITIVITY = 0.1f;
 
 bool gLeftMouseButtonPressed = false;
@@ -52,6 +52,7 @@ GLuint crosshairVBO = 0;
 ShaderProgram* crosshairShader = nullptr;
 
 // Debug line (camera look vector)
+bool blueDebug = true;
 GLuint debugLineVAO = 0;
 GLuint debugLineVBO = 0;
 ShaderProgram* debugLineShader = nullptr;
@@ -68,33 +69,35 @@ int main() {
         initCrosshair();
 
         // Init debug line shader + buffers
-        debugLineShader = new ShaderProgram();
-        debugLineShader->loadShaders("./debug_line.vert", "./debug_line.frag");
-        glGenVertexArrays(1, &debugLineVAO);
-        glGenBuffers(1, &debugLineVBO);
-        glBindVertexArray(debugLineVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
-        // allocate for 2 vec3 positions
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6, nullptr, GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-        glBindVertexArray(0);
-        // point VAO/VBO (single vec3)
-        glGenVertexArrays(1, &debugPointVAO);
-        glGenBuffers(1, &debugPointVBO);
-        glBindVertexArray(debugPointVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, debugPointVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3, nullptr, GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-        glBindVertexArray(0);
+        if (blueDebug) {
+                debugLineShader = new ShaderProgram();
+                debugLineShader->loadShaders("./debug_line.vert", "./debug_line.frag");
+                glGenVertexArrays(1, &debugLineVAO);
+                glGenBuffers(1, &debugLineVBO);
+                glBindVertexArray(debugLineVAO);
+                glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
+                // allocate for 2 vec3 positions
+                glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6, nullptr, GL_DYNAMIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+                glEnableVertexAttribArray(0);
+                glBindVertexArray(0);
+                // point VAO/VBO (single vec3)
+                glGenVertexArrays(1, &debugPointVAO);
+                glGenBuffers(1, &debugPointVBO);
+                glBindVertexArray(debugPointVAO);
+                glBindBuffer(GL_ARRAY_BUFFER, debugPointVBO);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 3, nullptr, GL_DYNAMIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+                glEnableVertexAttribArray(0);
+                glBindVertexArray(0);
+        }
 
         // Load shaders
         ShaderProgram minecraftShader;
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
 
         // Generate world
-        world.generate(5); // 4 chunk render distance
+        world.generate(10); // 4 chunk render distance
 
         const auto& pathToIndex = Chunk::m_pathToTextureIndex;
         int numTexturesToBind = (int)pathToIndex.size();
@@ -224,7 +227,7 @@ int main() {
                 }
 
                 // Draw debug look vector and current hit markers
-                {
+                if (blueDebug) {
                         glm::vec3 origin = fpsCamera.getPosition();
                         glm::vec3 dir = glm::normalize(fpsCamera.getLook());
 
@@ -638,6 +641,7 @@ void cleanupCrosshair() {
         if (crosshairVAO) glDeleteVertexArrays(1, &crosshairVAO);
         if (crosshairVBO) glDeleteBuffers(1, &crosshairVBO);
         if (crosshairShader) delete crosshairShader;
+        if (!blueDebug) return;
         if (debugLineVAO) glDeleteVertexArrays(1, &debugLineVAO);
         if (debugLineVBO) glDeleteBuffers(1, &debugLineVBO);
         if (debugLineShader) delete debugLineShader;

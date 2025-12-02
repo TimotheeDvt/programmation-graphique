@@ -4,8 +4,12 @@ del *.frag 2>nul
 del *.vert 2>nul
 
 REM Copy new shader files from shaders directory
-copy shaders\*.frag
-copy shaders\*.vert
+copy shaders\minecraft.frag
+copy shaders\minecraft.vert
+copy shaders\crosshair.frag
+copy shaders\crosshair.vert
+copy shaders\debug_line.frag
+copy shaders\debug_line.vert
 
 REM Build the project
 cmake --build build --config Release

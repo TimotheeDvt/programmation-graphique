@@ -386,10 +386,6 @@ bool Chunk::shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const 
                 return false;
         }
 
-        if (current == BlockType::LEAVES) {
-                return neighbor != BlockType::LEAVES;
-        }
-
         return true;
 }
 
