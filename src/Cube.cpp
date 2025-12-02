@@ -305,17 +305,22 @@ void Chunk::initializeTextureConfig() {
                 "./textures/torch.png" // Texture spéciale
         };
 
+        // BLOCK_TYPE::GLASS
+        m_textureConfig[BlockType::GLASS] = {
+                "./textures/glass.png",
+                "./textures/glass.png",
+                "./textures/glass.png",
+                ""
+        };
+
         // --- Fin de la Configuration ---
 
         // Récupérer les index pour tous les chemins de texture
         for (const auto& pair : m_textureConfig) {
-                getIndex(pair.second.top);
-                getIndex(pair.second.bottom);
-                getIndex(pair.second.side);
-                getIndex(pair.second.special);
-        }
-        if (m_pathToTextureIndex.count("")) { // Supprimer le chemin vide s'il existe
-                m_pathToTextureIndex.erase("");
+                if (!pair.second.top.empty()) getIndex(pair.second.top);
+                if (!pair.second.bottom.empty()) getIndex(pair.second.bottom);
+                if (!pair.second.side.empty()) getIndex(pair.second.side);
+                if (!pair.second.special.empty()) getIndex(pair.second.special);
         }
 }
 
@@ -362,11 +367,10 @@ bool Chunk::shouldRenderFace(int x, int y, int z, int nx, int ny, int nz) const 
         BlockType current  = getBlock(x, y, z);
 
         // Don't render if neighbor is a full block (except for leaves)
-        if (isFullBlock(neighbor) && neighbor != BlockType::LEAVES) {
+        if (isFullBlock(neighbor) && neighbor != BlockType::LEAVES && neighbor != BlockType::GLASS) {
                 return false;
         }
 
-        // Always render leaves faces
         if (current == BlockType::LEAVES) {
                 return neighbor != BlockType::LEAVES;
         }
@@ -540,26 +544,26 @@ void Chunk::addTorchMesh(int x, int y, int z) {
         glm::vec3 chunkWorldPos = glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE);
         glm::vec3 worldPos = chunkWorldPos + glm::vec3(x + 0.5f, y, z + 0.5f); // center in block
 
-        float radius = 0.15f;
-        float baseY  = 0.0f;
-        float topY   = 0.7f;
+        float radius = 0.5f;
+        float baseY  = -0.5f;
+        float topY   = 0.5f;
 
         struct Quad { glm::vec3 p[4]; glm::vec3 normal; };
 
         Quad quads[2];
 
         // Diagonal in XZ: (-r,0,-r) .. (r,0,r)
-        quads[0].p[0] = worldPos + glm::vec3(-radius, baseY, -radius);
-        quads[0].p[1] = worldPos + glm::vec3( radius, baseY,  radius);
-        quads[0].p[2] = worldPos + glm::vec3( radius, topY,  radius);
-        quads[0].p[3] = worldPos + glm::vec3(-radius, topY, -radius);
+        quads[0].p[0] = worldPos + glm::vec3(-radius, baseY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].p[1] = worldPos + glm::vec3( radius, baseY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].p[2] = worldPos + glm::vec3( radius, topY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[0].p[3] = worldPos + glm::vec3(-radius, topY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
         quads[0].normal = glm::normalize(glm::vec3(1, 0, 1));
 
         // Other diagonal: (-r,0,r) .. (r,0,-r)
-        quads[1].p[0] = worldPos + glm::vec3(-radius, baseY,  radius);
-        quads[1].p[1] = worldPos + glm::vec3( radius, baseY, -radius);
-        quads[1].p[2] = worldPos + glm::vec3( radius, topY, -radius);
-        quads[1].p[3] = worldPos + glm::vec3(-radius, topY,  radius);
+        quads[1].p[0] = worldPos + glm::vec3(-radius, baseY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].p[1] = worldPos + glm::vec3( radius, baseY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].p[2] = worldPos + glm::vec3( radius, topY, -radius) - glm::vec3(0.5f, 0.0f, 0.5f);
+        quads[1].p[3] = worldPos + glm::vec3(-radius, topY,  radius) - glm::vec3(0.5f, 0.0f, 0.5f);
         quads[1].normal = glm::normalize(glm::vec3(1, 0,-1));
 
         int textureIndex = -1;
@@ -568,6 +572,7 @@ void Chunk::addTorchMesh(int x, int y, int z) {
                 textureIndex = m_pathToTextureIndex.at(config.special);
         }
         float texIdx = (float)textureIndex;
+        std::cout << "Adding torch mesh with texture index: " << texIdx << std::endl;
 
         for (int q = 0; q < 2; ++q) {
                 glm::vec3 n = quads[q].normal;

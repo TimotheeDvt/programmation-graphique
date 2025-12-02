@@ -378,6 +378,9 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                 case GLFW_KEY_7:         // select torch
                         gSelectedBlock = BlockType::TORCH;
                         break;
+                case GLFW_KEY_8:         // select glass
+                        gSelectedBlock = BlockType::GLASS;
+                        break;
                 default:
                         break;
         }

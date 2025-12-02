@@ -15,7 +15,8 @@ enum class BlockType {
 	REDSTONE,
 	WOOD,
 	LEAVES,
-	TORCH
+	TORCH,
+	GLASS
 };
 
 struct BlockTexturePaths {
