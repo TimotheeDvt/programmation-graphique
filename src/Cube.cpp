@@ -577,28 +577,28 @@ void Chunk::addTorchMesh(int x, int y, int z) {
                 // Triangle 1: 0,1,2
                 v[0].position = quads[q].p[0];
                 v[0].normal   = n;
-                v[0].texCoords = glm::vec3(0.0f, 0.0f, texIdx); // Ajout de l'index
+                v[0].texCoords = glm::vec3(0.0f, 0.0f, texIdx);
 
                 v[1].position = quads[q].p[1];
                 v[1].normal   = n;
-                v[1].texCoords = glm::vec3(1.0f, 0.0f, texIdx); // Ajout de l'index
+                v[1].texCoords = glm::vec3(1.0f, 0.0f, texIdx);
 
                 v[2].position = quads[q].p[2];
                 v[2].normal   = n;
-                v[2].texCoords = glm::vec3(1.0f, 1.0f, texIdx); // Ajout de l'index
+                v[2].texCoords = glm::vec3(1.0f, 1.0f, texIdx);
 
                 // Triangle 2: 0,2,3
                 v[3].position = quads[q].p[0];
                 v[3].normal   = n;
-                v[3].texCoords = glm::vec3(0.0f, 0.0f, texIdx); // Ajout de l'index
+                v[3].texCoords = glm::vec3(0.0f, 0.0f, texIdx);
 
                 v[4].position = quads[q].p[2];
                 v[4].normal   = n;
-                v[4].texCoords = glm::vec3(1.0f, 1.0f, texIdx); // Ajout de l'index
+                v[4].texCoords = glm::vec3(1.0f, 1.0f, texIdx);
 
                 v[5].position = quads[q].p[3];
                 v[5].normal   = n;
-                v[5].texCoords = glm::vec3(0.0f, 1.0f, texIdx); // Ajout de l'index
+                v[5].texCoords = glm::vec3(0.0f, 1.0f, texIdx);
 
                 for (int i = 0; i < 6; ++i) {
                         mVertices.push_back(v[i]);
@@ -719,4 +719,24 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
         }
 
         return positions;
+}
+
+std::vector<glm::vec3> World::getTorchLightPositions() const {
+    std::vector<glm::vec3> positions;
+
+    for (auto chunk : mChunks) {
+        glm::vec3 chunkPos = chunk->getWorldPosition();
+
+        for (int x = 0; x < Chunk::CHUNK_SIZE; x++) {
+            for (int y = 0; y < Chunk::CHUNK_HEIGHT; y++) {
+                for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
+                    if (chunk->getBlock(x, y, z) == BlockType::TORCH) {
+                        // Position the light source at the center of the torch model
+                        positions.push_back(chunkPos + glm::vec3(x + 0.5f, y + 0.5f, z + 0.5f));
+                    }
+                }
+            }
+        }
+    }
+    return positions;
 }

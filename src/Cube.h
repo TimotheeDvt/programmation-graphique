@@ -111,6 +111,7 @@ public:
 	void draw();
 
 	std::vector<glm::vec3> getRedstoneLightPositions() const;
+	std::vector<glm::vec3> World::getTorchLightPositions() const;
 
     bool setBlockAt(const glm::vec3& worldPos, BlockType type); // <--- NEW
     BlockType getBlockAt(const glm::vec3& worldPos) const;      // <--- NEW

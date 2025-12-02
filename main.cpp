@@ -45,7 +45,7 @@ void initCrosshair();
 void cleanupCrosshair();
 
 World world;
-BlockType gSelectedBlock = BlockType::REDSTONE;
+BlockType gSelectedBlock = BlockType::TORCH;
 
 GLuint crosshairVAO = 0;
 GLuint crosshairVBO = 0;
@@ -134,12 +134,21 @@ int main() {
         double lastTime = glfwGetTime();
 
         while (!glfwWindowShouldClose(gWindow)) {
+                // Get light positions for this frame
                 redstoneLights = world.getRedstoneLightPositions();
+                std::vector<glm::vec3> torchLights = world.getTorchLightPositions();
+
                 frameLights.clear();
                 for (const auto& pos : redstoneLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
                         frameLights.push_back(pos);
                 }
+                int redstoneLightCount = frameLights.size();
+                for (const auto& pos : torchLights) {
+                        if (frameLights.size() >= MAX_POINT_LIGHTS) break;
+                        frameLights.push_back(pos);
+                }
+
                 showFPS(gWindow);
 
                 double currentTime = glfwGetTime();
@@ -177,18 +186,25 @@ int main() {
 
                 // Point lights (redstone)
                 minecraftShader.setUniform("numPointLights", (int)frameLights.size());
-                for (int i = 0; i < (int)frameLights.size(); i++) {
+                for (size_t i = 0; i < frameLights.size(); i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
-
-                        // std::cout << "pos: " << frameLights[i].x << ", " << frameLights[i].y << ", " << frameLights[i].z << std::endl;
-
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.01f, 0.0f, 0.0f));
-                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
-                        minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
-                        minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
-                        minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
+
+                        if (i < redstoneLightCount) { // Redstone Light
+                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.01f, 0.0f, 0.0f));
+                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
+                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
+                                minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
+                                minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
+                        } else { // Torch Light
+                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.1f, 0.08f, 0.02f));
+                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.8f, 0.2f));
+                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.4f, 0.1f));
+                                // Torches have a smaller light radius
+                                minecraftShader.setUniform((base + ".linear").c_str(), 0.22f);
+                                minecraftShader.setUniform((base + ".exponant").c_str(), 0.20f);
+                        }
                 }
 
                 // Material properties
