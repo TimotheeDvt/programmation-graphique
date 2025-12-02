@@ -121,7 +121,6 @@ int main() {
 
         // Get redstone light positions
         std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
-        std::cout << "Found " << redstoneLights.size() << " point light(s) from redstone blocks" << std::endl;
 
         // Store light data for each frame
         std::vector<glm::vec3> frameLights;
@@ -129,7 +128,6 @@ int main() {
                 if (frameLights.size() >= MAX_POINT_LIGHTS) break;
                 frameLights.push_back(pos);
         }
-        std::cout << "Using " << frameLights.size() << " point lights (max: " << MAX_POINT_LIGHTS << ")" << std::endl;
 
         double lastTime = glfwGetTime();
 
@@ -177,8 +175,29 @@ int main() {
                 minecraftShader.setUniform("projection", projection);
                 minecraftShader.setUniform("viewPos", viewPos);
 
-                // Directional light (sun)
+                const int LEAVES_TEX_INDEX = 5;
+                const int TORCH_TEX_INDEX = 6;
+                const int GLASS_TEX_INDEX = 7;
+
+                minecraftShader.setUniform("u_torchTexIndex", TORCH_TEX_INDEX);
+                minecraftShader.setUniform("u_leavesTexIndex", LEAVES_TEX_INDEX);
+                minecraftShader.setUniform("u_glassTexIndex", GLASS_TEX_INDEX);
+
+                // *** SHADOW MAPPING SETUP START (Directional Light) ***
+                // Note: A full implementation requires a rendering pass to generate the depth map.
+                // We only add the uniforms and texture binding here.
+                glm::mat4 lightProjection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, 0.1f, 100.0f);
+                // LookAt: Light position, target (origin), up vector
                 glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
+                glm::mat4 lightView = glm::lookAt(-sunDirection * 30.0f, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+                glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+
+                minecraftShader.setUniform("lightSpaceMatrix", lightSpaceMatrix);
+                // Assuming shadow map is bound to texture unit GL_TEXTURE31 (safe since MAX_BLOCK_TEXTURES=16)
+                // You must bind the shadow map texture to unit 31 before drawing.
+                minecraftShader.setUniformSampler("shadowMap", 31);
+
+                // Directional light (sun)
                 minecraftShader.setUniform("dirLight.direction", sunDirection);
                 minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
                 minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);

@@ -183,7 +183,6 @@ void Chunk::generate() {
 
                         if (dist(rng) < 0.01f && height + 1 < CHUNK_HEIGHT - 1 && countRedstone == 0) {
                                 mBlocks[x][height + 1][z] = BlockType::REDSTONE;
-                                std::cout << "Placed redstone at (" << (mChunkX * CHUNK_SIZE + x) << ", " << (height + 1) << ", " << (mChunkZ * CHUNK_SIZE + z) << ")\n";
                                 countRedstone++;
                         }
 
@@ -586,7 +585,6 @@ void Chunk::addTorchMesh(int x, int y, int z) {
                 textureIndex = m_pathToTextureIndex.at(config.special);
         }
         float texIdx = (float)textureIndex;
-        std::cout << "Adding torch mesh with texture index: " << texIdx << std::endl;
 
         for (int q = 0; q < 4; ++q) {
                 glm::vec3 n = quads[q].normal;
