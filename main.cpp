@@ -147,30 +147,39 @@ int main() {
 
         std::cout << "World generated successfully!" << std::endl;
 
-        std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
-
         std::vector<glm::vec3> frameLights;
-        for (const auto& pos : redstoneLights) {
-                if (frameLights.size() >= MAX_POINT_LIGHTS) break;
-                frameLights.push_back(pos);
-        }
 
         double lastTime = glfwGetTime();
 
         while (!glfwWindowShouldClose(gWindow)) {
-                redstoneLights = world.getRedstoneLightPositions();
+                std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
                 std::vector<glm::vec3> torchLights = world.getTorchLightPositions();
 
+                // === ÉTAPE 1: Préparer TOUTES les lumières AVANT le rendu ===
                 frameLights.clear();
+
+                // Ajouter les lumières redstone
                 for (const auto& pos : redstoneLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
                         frameLights.push_back(pos);
                 }
                 int redstoneLightCount = frameLights.size();
+
+                // Ajouter les lumières torches
                 for (const auto& pos : torchLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
                         frameLights.push_back(pos);
                 }
+                int worldLightCount = frameLights.size();
+
+                // Ajouter les lumières des modèles (Enderman)
+                for (const auto& modelData : scene.models) {
+                        if (frameLights.size() >= MAX_POINT_LIGHTS) break;
+                        // Position de la lumière des yeux (ajuster selon votre modèle)
+                        glm::vec3 eyeLightPos = modelData.position + glm::vec3(0.0f, 2.8f, 0.3f);
+                        frameLights.push_back(eyeLightPos);
+                }
+                int totalLightCount = frameLights.size();
 
                 showFPS(gWindow);
 
@@ -205,31 +214,41 @@ int main() {
                 minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
                 minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
 
-                // Point lights (redstone)
-                minecraftShader.setUniform("numPointLights", (int)frameLights.size());
-                size_t i = 0;
-                for (i = 0; i < frameLights.size(); i++) {
+                // === ÉTAPE 2: Configurer TOUTES les lumières dans le shader ===
+                minecraftShader.setUniform("numPointLights", totalLightCount);
+
+                for (int i = 0; i < totalLightCount; i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
-                        std::cout << "Lpos" << i << ": " << frameLights[i].x << ", " << frameLights[i].y << ", " << frameLights[i].z << std::endl;
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
 
-                        if (i < redstoneLightCount) { // Redstone Light
+                        if (i < redstoneLightCount) {
+                                // Redstone Light
                                 minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.01f, 0.0f, 0.0f));
                                 minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
                                 minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
                                 minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
                                 minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
-                        } else { // Torch Light
+                        }
+                        else if (i < worldLightCount) {
+                                // Torch Light
                                 minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.1f, 0.08f, 0.02f));
                                 minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.8f, 0.2f));
                                 minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.4f, 0.1f));
-                                // Torches have a smaller light radius
                                 minecraftShader.setUniform((base + ".linear").c_str(), 0.22f);
                                 minecraftShader.setUniform((base + ".exponant").c_str(), 0.20f);
                         }
+                        else {
+                                // Model Eye Light (Enderman)
+                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.05f, 0.0f, 0.05f)*5.0f);
+                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f)*5.0f);
+                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.f, 0.0f, 0.4f)*5.0f);
+                                minecraftShader.setUniform((base + ".linear").c_str(), 0.35f);
+                                minecraftShader.setUniform((base + ".exponant").c_str(), 0.44f);
+                        }
                 }
 
+                // === ÉTAPE 3: Configurer les matériaux ===
                 minecraftShader.setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
                 minecraftShader.setUniformSampler("material.diffuseMap", 0);
                 minecraftShader.setUniform("material.specular", glm::vec3(0.1f, 0.1f, 0.1f));
@@ -240,8 +259,11 @@ int main() {
                         std::string samplerName = "material.diffuseMaps[" + std::to_string(i) + "]";
                         minecraftShader.setUniformSampler(samplerName.c_str(), i);
                 }
+
+                // === ÉTAPE 4: Dessiner le monde ===
                 world.draw();
 
+                // === ÉTAPE 5: Dessiner les modèles ===
                 for (const auto& modelData : scene.models) {
                         Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
                         Texture2D* texture = modelTextureCache.count(modelData.textureFile) ? modelTextureCache.at(modelData.textureFile) : nullptr;
@@ -261,33 +283,18 @@ int main() {
                                         minecraftShader.setUniformSampler("material.diffuseMap", 0);
                                 }
 
-                                // Dessiner l'Enderman
+                                // Dessiner le modèle
                                 mesh->draw();
-
-
-                                // new point light for models eyes
-                                std::string base = "pointLights[" + std::to_string(i) + "]";
-                                minecraftShader.setUniform((base + ".position").c_str(), modelData.position);
-                                std::cout << "Mpos" << i << ": " << modelData.position.x << ", " << modelData.position.y << ", " << modelData.position.z << std::endl;
-                                minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
-                                // Eye light purple
-                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(1.05f, 0.0f, 0.05f));
-                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.6f, 0.0f, 0.6f));
-                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.3f, 0.0f, 0.3f));
-
-                                minecraftShader.setUniform((base + ".linear").c_str(), 1.0f);
-                                minecraftShader.setUniform((base + ".exponant").c_str(), 1.00f);
-                                i++;
 
                                 if (texture) {
                                         texture->unbind(0);
                                 }
-
                         }
                 }
 
-                std::cout << "Rendered " << i << " model light sources." << std::endl;
-
+                for (int i = 0; i < numTexturesToBind; i++) {
+                        gBlockTextures[i].unbind(i);
+                }
                 for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].unbind(i);
                 }
