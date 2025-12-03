@@ -21,7 +21,6 @@
 #define MAX_POINT_LIGHTS 256
 Texture2D gBlockTextures[MAX_BLOCK_TEXTURES];
 
-ShaderProgram* modelShader = nullptr;
 Scene scene; // Déclaration de l'instance de la scène
 std::map<std::string, Mesh*> meshCache; // Cache pour les données des maillages (OBJ)
 std::map<std::string, Texture2D*> modelTextureCache; // Cache pour les textures des modèles
@@ -102,11 +101,6 @@ int main() {
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
 
         world.generate(4);
-
-        // NOUVEAU: Initialisation du shader générique pour les modèles OBJ
-        modelShader = new ShaderProgram();
-        // Utilisation du shader lighting_dir pour un éclairage simple
-        modelShader->loadShaders("./lighting_dir.vert", "./lighting_dir.frag");
 
         // NOUVEAU: Préchargement des maillages et textures
         for (const auto& modelData : scene.models) {
@@ -217,6 +211,7 @@ int main() {
                 for (i = 0; i < frameLights.size(); i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
+                        std::cout << "Lpos" << i << ": " << frameLights[i].x << ", " << frameLights[i].y << ", " << frameLights[i].z << std::endl;
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
 
                         if (i < redstoneLightCount) { // Redstone Light
@@ -247,22 +242,6 @@ int main() {
                 }
                 world.draw();
 
-                modelShader->use();
-                modelShader->setUniform("view", view);
-                modelShader->setUniform("projection", projection);
-                modelShader->setUniform("viewPos", viewPos);
-
-                // Configuration de la lumière directionnelle (Soleil) pour les modèles OBJ
-                modelShader->setUniform("light.direction", sunDirection);
-                modelShader->setUniform("light.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
-                modelShader->setUniform("light.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
-                modelShader->setUniform("light.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
-
-                // Propriétés du matériau par défaut
-                modelShader->setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
-                modelShader->setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
-                modelShader->setUniform("material.shininess", 32.0f);
-
                 for (const auto& modelData : scene.models) {
                         Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
                         Texture2D* texture = modelTextureCache.count(modelData.textureFile) ? modelTextureCache.at(modelData.textureFile) : nullptr;
@@ -274,25 +253,22 @@ int main() {
                                 modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
                                 modelMatrix = glm::scale(modelMatrix, modelData.scale);
 
-                                modelShader->setUniform("model", modelMatrix);
+                                minecraftShader.setUniform("model", modelMatrix);
 
                                 // Lier la texture du modèle
                                 if (texture) {
                                         texture->bind(0);
-                                        modelShader->setUniformSampler("material.diffuseMap", 0);
+                                        minecraftShader.setUniformSampler("material.diffuseMap", 0);
                                 }
 
                                 // Dessiner l'Enderman
                                 mesh->draw();
 
-                                if (texture) {
-                                        texture->unbind(0);
-                                }
-                                minecraftShader.use(); // On reste sur le minecraftShader qui gère les point lights
 
                                 // new point light for models eyes
                                 std::string base = "pointLights[" + std::to_string(i) + "]";
                                 minecraftShader.setUniform((base + ".position").c_str(), modelData.position);
+                                std::cout << "Mpos" << i << ": " << modelData.position.x << ", " << modelData.position.y << ", " << modelData.position.z << std::endl;
                                 minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
                                 // Eye light purple
                                 minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(1.05f, 0.0f, 0.05f));
@@ -302,6 +278,11 @@ int main() {
                                 minecraftShader.setUniform((base + ".linear").c_str(), 1.0f);
                                 minecraftShader.setUniform((base + ".exponant").c_str(), 1.00f);
                                 i++;
+
+                                if (texture) {
+                                        texture->unbind(0);
+                                }
+
                         }
                 }
 
@@ -374,7 +355,6 @@ int main() {
                 lastTime = currentTime;
         }
 
-        delete modelShader;
         for (auto pair : meshCache) {
                 delete pair.second;
         }
