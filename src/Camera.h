@@ -52,7 +52,9 @@ class FPSCamera : public Camera {
 
         glm::vec3 mVelocity;
         bool mIsOnGround;
-        glm::vec3 mPlayerSize = glm::vec3(0.5f, 2.0f, 0.5f); // Width, Height, Depth
+        glm::vec3 mPlayerSize = glm::vec3(0.5f, 1.8f, 0.5f); // Width, Height, Depth
+
+        void resolveCollision(glm::vec3& pos, const glm::vec3& halfSize, World& world, char axis);
 
 
     private:
