@@ -92,7 +92,7 @@ int main() {
         ShaderProgram minecraftShader;
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
 
-        world.generate(10);
+        world.generate(4);
 
         const auto& pathToIndex = Chunk::m_pathToTextureIndex;
         int numTexturesToBind = (int)pathToIndex.size();
@@ -141,6 +141,8 @@ int main() {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
                         frameLights.push_back(pos);
                 }
+
+                std::cout << "Redstone Lights: " << redstoneLightCount << ", Total Point Lights: " << frameLights.size() << std::endl;
 
                 showFPS(gWindow);
 

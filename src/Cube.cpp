@@ -178,12 +178,12 @@ void Chunk::generate() {
                         }
 
                         // Generate torches
-                        if (dist(rng) < 0.2f && height + 1 < CHUNK_HEIGHT - 1) {
-                                mBlocks[x][height + 1][z] = BlockType::TORCH;
+                        if (dist(rng) < 0.0004f && height + 1 < CHUNK_HEIGHT - 1) {
+                                mBlocks[x][height][z] = BlockType::TORCH;
                         }
 
                         // Generate redstone blocks
-                        if (dist(rng) < 0.02f) {
+                        if (dist(rng) < 0.0002f) {
                                 mBlocks[x][height - 1][z] = BlockType::REDSTONE;
                         }
 
