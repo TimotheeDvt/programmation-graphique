@@ -354,13 +354,16 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                 case GLFW_KEY_ESCAPE:
                         glfwSetWindowShouldClose(window, GL_TRUE);
                         break;
-                case GLFW_KEY_1:
+                case GLFW_KEY_F1:
                         gWireframe = !gWireframe;
                         if (gWireframe) {
                                 glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                         } else {
                                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                         }
+                        break;
+                case GLFW_KEY_F2:         // select grass
+                        blueDebug = !blueDebug;
                         break;
                 case GLFW_KEY_2:         // select redstone
                         gSelectedBlock = BlockType::REDSTONE;

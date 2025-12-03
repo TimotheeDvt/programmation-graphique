@@ -4,6 +4,7 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtx/normalize_dot.hpp"
 #include "glm/geometric.hpp"
+#include <iostream>
 
 const float DEF_FOV = 45.0f;
 
@@ -98,6 +99,10 @@ void FPSCamera::jump() {
 }
 
 void FPSCamera::applyPhysics(World& world, double elapsedTime) {
+    const auto isBlocked = [&](const glm::vec3& pos) {
+        return world.getBlockAt(pos) != BlockType::AIR && world.getBlockAt(pos) != BlockType::TORCH;
+    };
+
     const float GRAVITY = 20.0f;
     const float FRICTION = 8.0f;
 
@@ -126,7 +131,7 @@ void FPSCamera::applyPhysics(World& world, double elapsedTime) {
         // --- Collision sur l'axe Y ---
         glm::vec3 yCollisionPoint = mPosition + cornerOffset;
         yCollisionPoint.y = newPos.y + cornerOffset.y;
-        if (world.getBlockAt(yCollisionPoint) != BlockType::AIR) {
+        if (isBlocked(yCollisionPoint)) {
             if (mVelocity.y < 0) { // Collision en tombant
                 mIsOnGround = true;
             }
@@ -137,17 +142,19 @@ void FPSCamera::applyPhysics(World& world, double elapsedTime) {
         // --- Collision sur l'axe X ---
         glm::vec3 xCollisionPoint = mPosition + cornerOffset;
         xCollisionPoint.x = newPos.x + cornerOffset.x;
-        if (world.getBlockAt(xCollisionPoint) != BlockType::AIR) {
+        if (isBlocked(xCollisionPoint)) {
             mVelocity.x = 0;
             newPos.x = floor(xCollisionPoint.x) + ( (i & 1) ? 0.0f : 1.0f ) - cornerOffset.x;
+            std::cout << "Collision X at: " << xCollisionPoint.x << ", " << xCollisionPoint.y << ", " << xCollisionPoint.z << std::endl;
         }
 
         // --- Collision sur l'axe Z ---
         glm::vec3 zCollisionPoint = mPosition + cornerOffset;
         zCollisionPoint.z = newPos.z + cornerOffset.z;
-        if (world.getBlockAt(zCollisionPoint) != BlockType::AIR) {
+        if (isBlocked(zCollisionPoint)) {
             mVelocity.z = 0;
             newPos.z = floor(zCollisionPoint.z) + ( (i & 4) ? 0.0f : 1.0f ) - cornerOffset.z;
+            std::cout << "Collision Z at: " << zCollisionPoint.x << ", " << zCollisionPoint.y << ", " << zCollisionPoint.z << std::endl;
         }
     }
 
