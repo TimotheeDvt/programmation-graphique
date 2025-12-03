@@ -13,9 +13,18 @@
 #include "./src/Camera.h"
 #include "./src/Cube.h"
 
+#include "./src/Mesh.h"
+#include "./src/Model.h"
+#include "./src/Scene.h"
+
 #define MAX_BLOCK_TEXTURES 16
 #define MAX_POINT_LIGHTS 256
 Texture2D gBlockTextures[MAX_BLOCK_TEXTURES];
+
+ShaderProgram* modelShader = nullptr;
+Scene scene; // Déclaration de l'instance de la scène
+std::map<std::string, Mesh*> meshCache; // Cache pour les données des maillages (OBJ)
+std::map<std::string, Texture2D*> modelTextureCache; // Cache pour les textures des modèles
 
 const char* APP_TITLE = "Minecraft Clone - OpenGL Demo";
 int gWindowWidth = 1280;
@@ -94,6 +103,33 @@ int main() {
 
         world.generate(4);
 
+        // NOUVEAU: Initialisation du shader générique pour les modèles OBJ
+        modelShader = new ShaderProgram();
+        // Utilisation du shader lighting_dir pour un éclairage simple
+        modelShader->loadShaders("./lighting_dir.vert", "./lighting_dir.frag");
+
+        // NOUVEAU: Préchargement des maillages et textures
+        for (const auto& modelData : scene.models) {
+                // 1. Charger le maillage (Enderman.obj, ukulele.obj)
+                if (meshCache.find(modelData.meshFile) == meshCache.end()) {
+                        Mesh* mesh = new Mesh();
+                        if (mesh->loadObj(modelData.meshFile)) {
+                                meshCache[modelData.meshFile] = mesh;
+                        } else {
+                                delete mesh;
+                        }
+                }
+                // 2. Charger la texture (enderman.png, ukulele.jpg)
+                if (!modelData.textureFile.empty() && modelTextureCache.find(modelData.textureFile) == modelTextureCache.end()) {
+                        Texture2D* texture = new Texture2D();
+                        if (texture->loadTexture(modelData.textureFile, true)) {
+                                modelTextureCache[modelData.textureFile] = texture;
+                        } else {
+                                delete texture;
+                        }
+                }
+        }
+
         const auto& pathToIndex = Chunk::m_pathToTextureIndex;
         int numTexturesToBind = (int)pathToIndex.size();
 
@@ -141,8 +177,6 @@ int main() {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
                         frameLights.push_back(pos);
                 }
-
-                std::cout << "Redstone Lights: " << redstoneLightCount << ", Total Point Lights: " << frameLights.size() << std::endl;
 
                 showFPS(gWindow);
 
@@ -211,6 +245,51 @@ int main() {
                         minecraftShader.setUniformSampler(samplerName.c_str(), i);
                 }
                 world.draw();
+
+                modelShader->use();
+                modelShader->setUniform("view", view);
+                modelShader->setUniform("projection", projection);
+                modelShader->setUniform("viewPos", viewPos);
+
+                // Configuration de la lumière directionnelle (Soleil) pour les modèles OBJ
+                modelShader->setUniform("light.direction", sunDirection);
+                modelShader->setUniform("light.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
+                modelShader->setUniform("light.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
+                modelShader->setUniform("light.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
+
+                // Propriétés du matériau par défaut
+                modelShader->setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
+                modelShader->setUniform("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
+                modelShader->setUniform("material.shininess", 32.0f);
+
+                for (const auto& modelData : scene.models) {
+                        Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
+                        Texture2D* texture = modelTextureCache.count(modelData.textureFile) ? modelTextureCache.at(modelData.textureFile) : nullptr;
+
+                        if (mesh) {
+                                // Calculer la matrice de transformation du modèle
+                                glm::mat4 modelMatrix = glm::mat4(1.0f);
+                                modelMatrix = glm::scale(modelMatrix, modelData.scale);
+                                modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+                                modelMatrix = glm::translate(modelMatrix, modelData.position);
+
+                                modelShader->setUniform("model", modelMatrix);
+
+                                // Lier la texture du modèle
+                                if (texture) {
+                                        texture->bind(0);
+                                        modelShader->setUniformSampler("material.diffuseMap", 0);
+                                }
+
+                                // Dessiner l'Enderman/Ukulele
+                                mesh->draw();
+
+                                if (texture) {
+                                        texture->unbind(0);
+                                }
+                        }
+                }
+
                 for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].unbind(i);
                 }
@@ -277,6 +356,15 @@ int main() {
                 glfwSwapBuffers(gWindow);
                 lastTime = currentTime;
         }
+
+        delete modelShader;
+        for (auto pair : meshCache) {
+                delete pair.second;
+        }
+        for (auto pair : modelTextureCache) {
+                delete pair.second;
+        }
+
         cleanupCrosshair();
         glfwTerminate();
         return 0;
