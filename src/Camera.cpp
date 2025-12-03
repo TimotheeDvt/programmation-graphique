@@ -41,17 +41,15 @@ const glm::vec3& Camera::getPosition() const {
 
 // FPSCamera
 FPSCamera::FPSCamera(glm::vec3 position, float yaw, float pitch) {
-    // We inherit mYaw's default value from the base Camera constructor
     mPosition = position;
-    if (yaw != 0.0f || pitch != 0.0f) { // Only override if values are provided
+    if (yaw != 0.0f || pitch != 0.0f) {
         mYaw = yaw;
         mPitch = pitch;
     }
     mVelocity = glm::vec3(0.0f);
     mIsOnGround = false;
-    // mPlayerSize est initialisé dans le .h
 
-    updateCameraVectors(); // IMPORTANT: Initialize camera vectors
+    updateCameraVectors();
 }
 
 void FPSCamera::setPosition(const glm::vec3& position) {
@@ -68,33 +66,28 @@ void FPSCamera::rotate(float yaw, float pitch) {
     mYaw += glm::radians(yaw);
     mPitch += glm::radians(pitch);
 
-    // Clamp pitch to prevent gimbal lock
     mPitch = glm::clamp(mPitch, -glm::pi<float>() / 2.0f + 0.1f, glm::pi<float>() / 2.0f - 0.1f);
     updateCameraVectors();
 }
 
 void FPSCamera::updateCameraVectors() {
-    // Calculate the look direction vector
     glm::vec3 look;
     look.x = cosf(mPitch) * cosf(mYaw);
     look.y = sinf(mPitch);
     look.z = cosf(mPitch) * sinf(mYaw);
 
-    // Normalize to ensure it's a unit vector
     mLook = glm::normalize(look);
 
-    // Calculate right and up vectors
     mRight = glm::normalize(glm::cross(mLook, WORLD_UP));
     mUp = glm::normalize(glm::cross(mRight, mLook));
 
-    // Update target position for view matrix
     mTargetPos = mPosition + mLook;
 }
 
 void FPSCamera::jump() {
     if (mIsOnGround) {
         mIsOnGround = false;
-        mVelocity.y = 8.0f; // Puissance du saut
+        mVelocity.y = 6.0f;
     }
 }
 
@@ -130,13 +123,13 @@ void FPSCamera::applyPhysics(World& world, double elapsedTime) {
 
         // --- Collision sur l'axe Y ---
         glm::vec3 yCollisionPoint = mPosition + cornerOffset;
-        yCollisionPoint.y = newPos.y + cornerOffset.y;
+        yCollisionPoint.y = newPos.y + cornerOffset.y; // Petit offset pour éviter de rester coincé
         if (isBlocked(yCollisionPoint)) {
             if (mVelocity.y < 0) { // Collision en tombant
                 mIsOnGround = true;
             }
             mVelocity.y = 0;
-            newPos.y = floor(yCollisionPoint.y) + ( (i & 2) ? 0.0f : 1.0f ) - cornerOffset.y;
+            newPos.y = floor(yCollisionPoint.y) + ( (i & 2) ? 0.0f : 1.0f ) - cornerOffset.y + 0.001f;
         }
 
         // --- Collision sur l'axe X ---

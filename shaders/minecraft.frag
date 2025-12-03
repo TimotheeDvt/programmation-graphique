@@ -49,33 +49,25 @@ void main() {
         vec3 viewDir = normalize(viewPos - FragPos);
         vec2 uv = TexCoord;
 
-        // 1. Sample the full texture including alpha (vec4)
         vec4 texData;
         if (TexIndex >= 0 && TexIndex < MAX_BLOCK_TEXTURES) {
-                // Change: Sample the full vec4 from the diffuse map
                 texData = texture(material.diffuseMaps[TexIndex], uv);
         } else {
-                // Magenta fallback
                 texData = vec4(1.0f, 0.0f, 1.0f, 1.0f);
         }
 
-        // 2. Alpha Testing: Discard fragment if alpha is too low
-        // This is essential for non-cubic geometry like the torch (and leaves).
         if (texData.a < 0.1) {
             discard;
         }
 
-        // Now use the RGB part for lighting calculation
         vec3 texColor = texData.rgb;
 
-        // Directional lighting (sun/moon)
         vec3 result = calcDirectionalLight(dirLight, norm, viewDir, texColor);
-        // Point lights (redstone and torch)
+
         for (int i = 0; i < numPointLights && i < MAX_POINT_LIGHTS; i++) {
                 result += calcPointLight(pointLights[i], norm, FragPos, viewDir, texColor);
         }
 
-        // Final color is the calculated light * the sampled color, with full opacity.
         FragColor = vec4(result, 1.0);
 }
 

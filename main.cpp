@@ -2,8 +2,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <sstream>
 #include <filesystem>
-#include <cmath> // For std::abs
-#include <limits> // For std::numeric_limits
+#include <cmath>
+#include <limits>
 #include <glm/gtx/norm.hpp>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -24,7 +24,7 @@ GLFWwindow* gWindow = NULL;
 bool gWireframe = false;
 
 FPSCamera fpsCamera(glm::vec3(0.0f, 20.0f, 20.0f));
-bool gIsFlying = false; // Pour basculer entre le mode physique et le mode vol
+bool gIsFlying = false;
 const double ZOOM_SENSITIVITY = -3.0;
 float MOVE_SPEED = 30.0;
 const float MOUSE_SENSITIVITY = 0.1f;
@@ -52,7 +52,6 @@ GLuint crosshairVAO = 0;
 GLuint crosshairVBO = 0;
 ShaderProgram* crosshairShader = nullptr;
 
-// Debug line (camera look vector)
 bool blueDebug = true;
 GLuint debugLineVAO = 0;
 GLuint debugLineVBO = 0;
@@ -69,7 +68,6 @@ int main() {
         }
         initCrosshair();
 
-        // Init debug line shader + buffers
         if (blueDebug) {
                 debugLineShader = new ShaderProgram();
                 debugLineShader->loadShaders("./debug_line.vert", "./debug_line.frag");
@@ -77,12 +75,10 @@ int main() {
                 glGenBuffers(1, &debugLineVBO);
                 glBindVertexArray(debugLineVAO);
                 glBindBuffer(GL_ARRAY_BUFFER, debugLineVBO);
-                // allocate for 2 vec3 positions
                 glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6, nullptr, GL_DYNAMIC_DRAW);
                 glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
                 glEnableVertexAttribArray(0);
                 glBindVertexArray(0);
-                // point VAO/VBO (single vec3)
                 glGenVertexArrays(1, &debugPointVAO);
                 glGenBuffers(1, &debugPointVBO);
                 glBindVertexArray(debugPointVAO);
@@ -93,12 +89,10 @@ int main() {
                 glBindVertexArray(0);
         }
 
-        // Load shaders
         ShaderProgram minecraftShader;
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
 
-        // Generate world
-        world.generate(10); // 4 chunk render distance
+        world.generate(10);
 
         const auto& pathToIndex = Chunk::m_pathToTextureIndex;
         int numTexturesToBind = (int)pathToIndex.size();
@@ -123,10 +117,8 @@ int main() {
 
         std::cout << "World generated successfully!" << std::endl;
 
-        // Get redstone light positions
         std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
 
-        // Store light data for each frame
         std::vector<glm::vec3> frameLights;
         for (const auto& pos : redstoneLights) {
                 if (frameLights.size() >= MAX_POINT_LIGHTS) break;
@@ -136,7 +128,6 @@ int main() {
         double lastTime = glfwGetTime();
 
         while (!glfwWindowShouldClose(gWindow)) {
-                // Get light positions for this frame
                 redstoneLights = world.getRedstoneLightPositions();
                 std::vector<glm::vec3> torchLights = world.getTorchLightPositions();
 
@@ -161,7 +152,6 @@ int main() {
 
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-                // Setup matrices
                 glm::mat4 model = glm::mat4(1.0f);
                 glm::mat4 view = fpsCamera.getViewMatrix();
 
@@ -171,7 +161,6 @@ int main() {
 
                 glm::vec3 viewPos = fpsCamera.getPosition();
 
-                // Use shader
                 minecraftShader.use();
 
                 minecraftShader.setUniform("model", model);
@@ -209,16 +198,13 @@ int main() {
                         }
                 }
 
-                // Material properties
                 minecraftShader.setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
                 minecraftShader.setUniformSampler("material.diffuseMap", 0);
                 minecraftShader.setUniform("material.specular", glm::vec3(0.1f, 0.1f, 0.1f));
                 minecraftShader.setUniform("material.shininess", 8.0f);
 
-                // Draw world
                 for (int i = 0; i < numTexturesToBind; i++) {
-                        gBlockTextures[i].bind(i); // Bind la texture 'i' à l'unité GL_TEXTURE'i'
-                        // Envoyer l'index (i) à l'uniforme du sampler dans le shader
+                        gBlockTextures[i].bind(i);
                         std::string samplerName = "material.diffuseMaps[" + std::to_string(i) + "]";
                         minecraftShader.setUniformSampler(samplerName.c_str(), i);
                 }
@@ -227,12 +213,10 @@ int main() {
                         gBlockTextures[i].unbind(i);
                 }
 
-                // Draw debug look vector and current hit markers
                 if (blueDebug) {
                         glm::vec3 origin = fpsCamera.getPosition();
                         glm::vec3 dir = glm::normalize(fpsCamera.getLook());
 
-                        // perform a frame raycast so we can draw the actual hit point
                         RaycastHit frameHit = raycastWorld(world, origin, dir, 16.0f);
 
                         glm::vec3 end;
@@ -265,9 +249,7 @@ int main() {
                         glLineWidth(4.0f);
                         glDrawArrays(GL_LINES, 0, 2);
 
-                        // If we have a hit, draw the exact hit position (green) and the voxel center (cyan)
                         if (frameHit.hit) {
-                                // green: exact sampled hit position
                                 float hitPt[3] = { frameHit.hitPos.x, frameHit.hitPos.y, frameHit.hitPos.z };
                                 glBindBuffer(GL_ARRAY_BUFFER, debugPointVBO);
                                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(hitPt), hitPt);
@@ -276,7 +258,6 @@ int main() {
                                 glPointSize(12.0f);
                                 glDrawArrays(GL_POINTS, 0, 1);
 
-                                // cyan: targeted voxel center
                                 glm::vec3 voxelCenter = frameHit.blockPos + glm::vec3(0.5f);
                                 float voxelPt[3] = { voxelCenter.x, voxelCenter.y, voxelCenter.z };
                                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(voxelPt), voxelPt);
@@ -362,33 +343,32 @@ void glfw_onkey(GLFWwindow* window, int key, int scancode, int action, int mode)
                                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                         }
                         break;
-                case GLFW_KEY_F2:         // select grass
+                case GLFW_KEY_F2:
                         blueDebug = !blueDebug;
                         break;
-                case GLFW_KEY_2:         // select redstone
+                case GLFW_KEY_2:
                         gSelectedBlock = BlockType::REDSTONE;
                         break;
-                case GLFW_KEY_3:         // select dirt
+                case GLFW_KEY_3:
                         gSelectedBlock = BlockType::DIRT;
                         break;
-                case GLFW_KEY_4:         // select stone
+                case GLFW_KEY_4:
                         gSelectedBlock = BlockType::STONE;
                         break;
-                case GLFW_KEY_5:         // select wood
+                case GLFW_KEY_5:
                         gSelectedBlock = BlockType::WOOD;
                         break;
-                case GLFW_KEY_6:         // select leaves
+                case GLFW_KEY_6:
                         gSelectedBlock = BlockType::LEAVES;
                         break;
-                case GLFW_KEY_7:         // select torch
+                case GLFW_KEY_7:
                         gSelectedBlock = BlockType::TORCH;
                         break;
-                case GLFW_KEY_8:         // select glass
+                case GLFW_KEY_8:
                         gSelectedBlock = BlockType::GLASS;
                         break;
                 case GLFW_KEY_F:         // Toggle fly mode
                         gIsFlying = !gIsFlying;
-                        // Si on passe en mode vol, on annule la vitesse verticale pour arrêter de tomber
                         if (gIsFlying) {
                                 fpsCamera.mVelocity.y = 0;
                         }
@@ -405,7 +385,7 @@ void glfw_onFrameBufferSize(GLFWwindow* window, int width, int height) {
 }
 
 void glfw_onMouseMove(GLFWwindow* window, double posX, double posY) {
-        // Mouse movement handled in update()
+        // This is handled in the update loop
 }
 
 void glfw_onMouseScroll(GLFWwindow* window, double deltaX, double deltaY) {
@@ -434,20 +414,16 @@ void update(double elapsedTime) {
         glfwSetCursorPos(gWindow, gWindowWidth/2.0, gWindowHeight/2.0);
 
         float physicsMoveSpeed = 1.0f; // Vitesse d'accélération au sol
-        // Movement
-        // if control is pressed, increase speed
         if (glfwGetKey(gWindow, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
-                MOVE_SPEED = 80.0f; // Vitesse augmentée
+                MOVE_SPEED = 80.0f;
                 physicsMoveSpeed = 2.5f;
         } else {
-                MOVE_SPEED = 20.0f; // Vitesse de base
+                MOVE_SPEED = 20.0f;
                 physicsMoveSpeed = 1.0f;
         }
 
         if (gIsFlying) {
-                // --- MODE VOL (CRÉATIF) ---
-                // Mouvement direct, sans physique
-                fpsCamera.mVelocity = glm::vec3(0.0f); // Annule toute vitesse résiduelle
+                fpsCamera.mVelocity = glm::vec3(0.0f);
 
                 if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS)
                         fpsCamera.move(MOVE_SPEED * (float)elapsedTime * fpsCamera.getLook());
@@ -463,7 +439,6 @@ void update(double elapsedTime) {
                         fpsCamera.move(MOVE_SPEED * (float)elapsedTime * glm::vec3(0, -1, 0));
 
         } else {
-                // --- MODE PHYSIQUE (SURVIE) ---
                 glm::vec3 moveDirection(0.0f);
 
                 if (glfwGetKey(gWindow, GLFW_KEY_W) == GLFW_PRESS) moveDirection += fpsCamera.getLook();
@@ -476,29 +451,21 @@ void update(double elapsedTime) {
                 fpsCamera.applyPhysics(world, elapsedTime);
         }
 
-        // Raycasting and block interaction
         if (gLeftMouseButtonPressed || gRightMouseButtonPressed) {
                 glm::vec3 origin = fpsCamera.getPosition();
-                // Ensure direction is normalized before DDA raycast
                 glm::vec3 dir = glm::normalize(fpsCamera.getLook());
-
-                // Debug: print origin and direction to help track alignment issues
                 RaycastHit hit = raycastWorld(world, origin, dir, 16.0f);
 
                 if (hit.hit) {
                         if (gLeftMouseButtonPressed) {
-                                // Break block
                                 world.setBlockAt(hit.blockPos, BlockType::AIR);
                         } else if (gRightMouseButtonPressed) {
-                                // Place block adjacent to the hit face
                                 glm::vec3 placePos = hit.blockPos + hit.normal;
 
-                                // Check if we're not placing inside the player
                                 glm::vec3 playerPos = fpsCamera.getPosition();
-                                if (glm::length(placePos - playerPos) < 1.5f) {
+                                if (glm::length(placePos - playerPos) < 1.2f) {
                                         std::cout << "Too close to player, can't place block" << std::endl;
                                 } else {
-                                        // Simple support check for torches: require solid below
                                         if (gSelectedBlock == BlockType::TORCH) {
                                                 glm::vec3 below = placePos + glm::vec3(0, -1, 0);
                                                 BlockType support = world.getBlockAt(below);
@@ -517,7 +484,6 @@ void update(double elapsedTime) {
                 }
         }
 
-        // Reset mouse button flags
         gLeftMouseButtonPressed = false;
         gRightMouseButtonPressed = false;
 }
@@ -549,10 +515,6 @@ void showFPS(GLFWwindow* window) {
 }
 
 RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float stepSize) {
-        // Simple ray-marching algorithm using the provided stepSize. This is
-        // less optimal than a full DDA but aligns better with a visual sample
-        // (origin + dir * t) and avoids subtle off-by-one boundary issues.
-
         RaycastHit hit;
         hit.hit = false;
 
@@ -569,7 +531,6 @@ RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::
 
                 // If voxel changed since last step, check for block
                 if (voxel.x != previousVoxel.x || voxel.y != previousVoxel.y || voxel.z != previousVoxel.z) {
-                        // If this voxel contains a solid block, report hit
                         if (world.getBlockAt(glm::vec3(voxel)) != BlockType::AIR) {
                                 hit.hit = true;
                                 hit.blockPos = glm::vec3(voxel);
@@ -578,9 +539,8 @@ RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::
                                 glm::ivec3 stepDir = voxel - previousVoxel;
                                 glm::ivec3 normal(0);
                                 if (stepDir.x != 0 || stepDir.y != 0 || stepDir.z != 0) {
-                                        normal = -stepDir; // face normal is opposite to movement into voxel
+                                        normal = -stepDir;
                                 } else {
-                                        // Fallback: find nearest face based on local position
                                         glm::vec3 local = pos - glm::vec3(voxel);
                                         float dx = std::min(local.x, 1.0f - local.x);
                                         float dy = std::min(local.y, 1.0f - local.y);
@@ -606,8 +566,8 @@ void drawCrosshair() {
 
         float centerX = gWindowWidth / 2.0f;
         float centerY = gWindowHeight / 2.0f;
-        float size = 10.0f; // crosshair arm length in pixels
-        float gap = 3.0f;   // gap from center
+        float size = 10.0f;
+        float gap = 3.0f;
 
         GLfloat verts[] = {
                 // Horizontal line (left)
@@ -641,20 +601,16 @@ void drawCrosshair() {
         glEnable(GL_DEPTH_TEST);
 }
 
-// Add this initialization function
 void initCrosshair() {
-        // Create shader
         crosshairShader = new ShaderProgram();
         crosshairShader->loadShaders("./crosshair.vert", "./crosshair.frag");
 
-        // Setup VAO/VBO
         glGenVertexArrays(1, &crosshairVAO);
         glGenBuffers(1, &crosshairVBO);
 
         glBindVertexArray(crosshairVAO);
         glBindBuffer(GL_ARRAY_BUFFER, crosshairVBO);
 
-        // Allocate buffer (we'll update it each frame)
         glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, nullptr, GL_DYNAMIC_DRAW);
 
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
@@ -663,7 +619,6 @@ void initCrosshair() {
         glBindVertexArray(0);
 }
 
-// Add cleanup function
 void cleanupCrosshair() {
         if (crosshairVAO) glDeleteVertexArrays(1, &crosshairVAO);
         if (crosshairVBO) glDeleteBuffers(1, &crosshairVBO);

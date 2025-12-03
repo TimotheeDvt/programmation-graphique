@@ -42,7 +42,7 @@ class Camera {
 
 class FPSCamera : public Camera {
     public:
-        FPSCamera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), float yaw = 0.0f, float pitch = 0.0f); // Note: yaw = 0.0f is a placeholder, the base class default is used.
+        FPSCamera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), float yaw = 0.0f, float pitch = 0.0f);
 
         virtual void setPosition(const glm::vec3& position);
         virtual void rotate(float yaw, float pitch); // in degrees
@@ -53,9 +53,6 @@ class FPSCamera : public Camera {
         glm::vec3 mVelocity;
         bool mIsOnGround;
         glm::vec3 mPlayerSize = glm::vec3(0.5f, 1.8f, 0.5f); // Width, Height, Depth
-
-        void resolveCollision(glm::vec3& pos, const glm::vec3& halfSize, World& world, char axis);
-
 
     private:
         void updateCameraVectors();

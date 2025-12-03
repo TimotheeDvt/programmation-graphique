@@ -23,7 +23,7 @@ struct BlockTexturePaths {
     std::string top;
     std::string bottom;
     std::string side;
-    std::string special; // Utilisé pour les blocs non-cubiques comme TORCH
+    std::string special;
 };
 
 struct CubeVertex {
@@ -41,7 +41,6 @@ public:
 	void draw();
 	void drawInstanced(int count);
 
-	// Get cube mesh data for building chunks
 	static const std::vector<CubeVertex>& getVertices();
 	static const std::vector<unsigned int>& getIndices();
 
@@ -98,9 +97,9 @@ private:
 
 struct RaycastHit {
     bool hit;
-    glm::vec3 blockPos;   // integer coords of hit block
-    glm::vec3 hitPos;     // exact position
-    glm::vec3 normal;     // face normal
+    glm::vec3 blockPos;
+    glm::vec3 hitPos;
+    glm::vec3 normal;
 };
 
 class World {
@@ -114,10 +113,9 @@ public:
 	std::vector<glm::vec3> getRedstoneLightPositions() const;
 	std::vector<glm::vec3> World::getTorchLightPositions() const;
 
-    bool setBlockAt(const glm::vec3& worldPos, BlockType type); // <--- NEW
-    BlockType getBlockAt(const glm::vec3& worldPos) const;      // <--- NEW
+    bool setBlockAt(const glm::vec3& worldPos, BlockType type);
+    BlockType getBlockAt(const glm::vec3& worldPos) const;
 
-	// Block interaction
 	RaycastHit raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance = 5.0f);
 	bool breakBlock(const glm::vec3& origin, const glm::vec3& direction);
 	bool placeBlock(const glm::vec3& origin, const glm::vec3& direction, BlockType type);
@@ -127,7 +125,8 @@ public:
 	BlockType getBlock2(int x, int y, int z) const;
 	void localToChunkCoords(int worldX, int worldY, int worldZ,
                         int& chunkX, int& chunkZ,
-                        int& localX, int& localY, int& localZ) const;
+                        int& localX, int& localY, int& localZ
+	) const;
 
 private:
 	std::vector<Chunk*> mChunks;
