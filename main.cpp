@@ -213,7 +213,8 @@ int main() {
 
                 // Point lights (redstone)
                 minecraftShader.setUniform("numPointLights", (int)frameLights.size());
-                for (size_t i = 0; i < frameLights.size(); i++) {
+                size_t i = 0;
+                for (i = 0; i < frameLights.size(); i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
@@ -269,9 +270,9 @@ int main() {
                         if (mesh) {
                                 // Calculer la matrice de transformation du modèle
                                 glm::mat4 modelMatrix = glm::mat4(1.0f);
-                                modelMatrix = glm::scale(modelMatrix, modelData.scale);
-                                modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
                                 modelMatrix = glm::translate(modelMatrix, modelData.position);
+                                modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+                                modelMatrix = glm::scale(modelMatrix, modelData.scale);
 
                                 modelShader->setUniform("model", modelMatrix);
 
@@ -281,14 +282,30 @@ int main() {
                                         modelShader->setUniformSampler("material.diffuseMap", 0);
                                 }
 
-                                // Dessiner l'Enderman/Ukulele
+                                // Dessiner l'Enderman
                                 mesh->draw();
 
                                 if (texture) {
                                         texture->unbind(0);
                                 }
+                                minecraftShader.use(); // On reste sur le minecraftShader qui gère les point lights
+
+                                // new point light for models eyes
+                                std::string base = "pointLights[" + std::to_string(i) + "]";
+                                minecraftShader.setUniform((base + ".position").c_str(), modelData.position);
+                                minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
+                                // Eye light purple
+                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(1.05f, 0.0f, 0.05f));
+                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.6f, 0.0f, 0.6f));
+                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.3f, 0.0f, 0.3f));
+
+                                minecraftShader.setUniform((base + ".linear").c_str(), 1.0f);
+                                minecraftShader.setUniform((base + ".exponant").c_str(), 1.00f);
+                                i++;
                         }
                 }
+
+                std::cout << "Rendered " << i << " model light sources." << std::endl;
 
                 for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].unbind(i);

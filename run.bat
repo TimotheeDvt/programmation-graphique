@@ -10,6 +10,8 @@ copy shaders\crosshair.frag
 copy shaders\crosshair.vert
 copy shaders\debug_line.frag
 copy shaders\debug_line.vert
+copy shaders\lighting_dir.frag
+copy shaders\lighting_dir.vert
 
 REM Build the project
 cmake --build build --config Release
