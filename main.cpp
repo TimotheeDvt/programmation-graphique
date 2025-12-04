@@ -74,39 +74,69 @@ GLuint gShadowMapFBO;
 GLuint gShadowMap;
 ShaderProgram* shadowShader = nullptr;
 
+// NOUVEAU : TBO Globals
+#define MAX_CHUNKS_RENDERED 81
+GLuint gVoxelTBO = 0; // Buffer Object
+GLuint gVoxelTexture = 0; // Texture Object (Buffer Texture)
+std::vector<GLint> gBlockSSBOData;
+
+
 bool initShadows() {
-    // 1. Créer le FBO
-    glGenFramebuffers(1, &gShadowMapFBO);
+        // 1. Créer le FBO
+        glGenFramebuffers(1, &gShadowMapFBO);
 
-    // 2. Créer la texture de profondeur (Shadow Map)
-    glGenTextures(1, &gShadowMap);
-    glBindTexture(GL_TEXTURE_2D, gShadowMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 
-                 SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    // Paramètres pour la gestion des bords et du filtrage
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // Couleur blanche pour les zones hors champ
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+        // 2. Créer la texture de profondeur (Shadow Map)
+        glGenTextures(1, &gShadowMap);
+        glBindTexture(GL_TEXTURE_2D, gShadowMap);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+                        SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        // Paramètres pour la gestion des bords et du filtrage
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // Couleur blanche pour les zones hors champ
+        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
-    // 3. Attacher la texture de profondeur au FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, gShadowMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gShadowMap, 0);
+        // 3. Attacher la texture de profondeur au FBO
+        glBindFramebuffer(GL_FRAMEBUFFER, gShadowMapFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gShadowMap, 0);
 
-    // 4. Configurer le FBO pour ne pas avoir de sortie couleur
-    glDrawBuffer(GL_NONE);
-    glReadBuffer(GL_NONE);
+        // 4. Configurer le FBO pour ne pas avoir de sortie couleur
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        std::cerr << "Framebuffer not complete!" << std::endl;
-        return false;
-    }
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "Framebuffer not complete!" << std::endl;
+                return false;
+        }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    return true;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return true;
 }
+
+// NOUVEAU : initVoxelTBO()
+bool initVoxelTBO(int maxChunks) {
+        // 1. Créer le Buffer Object (BO)
+        glGenBuffers(1, &gVoxelTBO);
+        glBindBuffer(GL_TEXTURE_BUFFER, gVoxelTBO);
+
+        // 2. Allouer le stockage pour le buffer
+        gBlockSSBOData.resize(maxChunks * Chunk::CHUNK_VOXEL_COUNT, 0);
+        // Utiliser GL_TEXTURE_BUFFER comme cible
+        glBufferData(GL_TEXTURE_BUFFER, gBlockSSBOData.size() * sizeof(GLint), gBlockSSBOData.data(), GL_DYNAMIC_DRAW);
+
+        // 3. Créer le Texture Object (TO)
+        glGenTextures(1, &gVoxelTexture);
+        glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
+        // 4. Attacher le Buffer Object à la Texture Object
+        glTexBuffer(GL_TEXTURE_BUFFER, GL_R32I, gVoxelTBO); // GL_R32I pour les entiers 32-bit (BlockType)
+
+        glBindBuffer(GL_TEXTURE_BUFFER, 0);
+        glBindTexture(GL_TEXTURE_BUFFER, 0);
+        return true;
+}
+
 
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
@@ -121,6 +151,13 @@ int main() {
                 std::cerr << "Shadow initialization failed" << std::endl;
                 return -1;
         }
+
+        // NOUVEAU: Initialisation du TBO
+        if (!initVoxelTBO(MAX_CHUNKS_RENDERED)) {
+             std::cerr << "TBO initialization failed" << std::endl;
+             return -1;
+        }
+
 
         if (blueDebug) {
                 debugLineShader = new ShaderProgram();
@@ -244,6 +281,56 @@ int main() {
                 glfwPollEvents();
                 update(deltaTime);
 
+                // =================================================================
+                // NOUVEAU: Préparation et envoi des données de blocs au GPU (TBO)
+                // =================================================================
+                const auto& chunks = world.getChunks();
+                int currentChunkOffset = 0;
+
+                // Vérifier et redimensionner le TBO si nécessaire (rare)
+                int requiredVoxelCount = (int)chunks.size() * Chunk::CHUNK_VOXEL_COUNT;
+                if (gBlockSSBOData.size() < requiredVoxelCount) {
+                    gBlockSSBOData.resize(requiredVoxelCount);
+                    glBindBuffer(GL_TEXTURE_BUFFER, gVoxelTBO);
+                    glBufferData(GL_TEXTURE_BUFFER, gBlockSSBOData.size() * sizeof(GLint), gBlockSSBOData.data(), GL_DYNAMIC_DRAW);
+                    glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
+                    glTexBuffer(GL_TEXTURE_BUFFER, GL_R32I, gVoxelTBO);
+                }
+
+                // Buffer pour les positions mondiales des chunks
+                glm::ivec3 chunkWorldOffsets[MAX_CHUNKS_RENDERED];
+                int numRenderedChunks = glm::min((int)chunks.size(), MAX_CHUNKS_RENDERED);
+
+                // Remplir le TBO avec l'état des blocs
+                for (int i = 0; i < numRenderedChunks; ++i) {
+                    Chunk* chunk = chunks[i];
+                    const BlockType* rawBlocks = chunk->getRawBlocks();
+                    glm::vec3 worldPos = chunk->getWorldPosition();
+
+                    chunkWorldOffsets[i] = glm::ivec3(worldPos);
+
+                    for (int x = 0; x < Chunk::CHUNK_SIZE; ++x) {
+                        for (int y = 0; y < Chunk::CHUNK_HEIGHT; ++y) {
+                            for (int z = 0; z < Chunk::CHUNK_SIZE; ++z) {
+                                // Index 1D pour TBO
+                                int flatIdx = currentChunkOffset + (x * Chunk::CHUNK_HEIGHT * Chunk::CHUNK_SIZE) + (y * Chunk::CHUNK_SIZE) + z;
+
+                                // Index 1D pour l'array 3D C++
+                                int rawIdx = (x * Chunk::CHUNK_HEIGHT * Chunk::CHUNK_SIZE) + (y * Chunk::CHUNK_SIZE) + z;
+
+                                gBlockSSBOData[flatIdx] = (GLint)rawBlocks[rawIdx];
+                            }
+                        }
+                    }
+                    currentChunkOffset += Chunk::CHUNK_VOXEL_COUNT;
+                }
+
+                // Envoi des données au GPU
+                glBindBuffer(GL_TEXTURE_BUFFER, gVoxelTBO);
+                glBufferSubData(GL_TEXTURE_BUFFER, 0, currentChunkOffset * sizeof(GLint), gBlockSSBOData.data());
+                glBindBuffer(GL_TEXTURE_BUFFER, 0);
+
+
                 // --- PASS 1: Rendu de la carte de profondeur (Shadow Map) ---
                 glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
                 float near_plane = 1.0f, far_plane = 70.0f;
@@ -266,6 +353,19 @@ int main() {
                 shadowShader->use();
                 shadowShader->setUniform("lightSpaceMatrix", lightSpaceMatrix);
 
+                // NOUVEAU: Envoyer les données Voxel pour la passe 1
+                shadowShader->setUniform("chunkSize", Chunk::CHUNK_SIZE);
+                shadowShader->setUniform("chunkHeight", Chunk::CHUNK_HEIGHT);
+                shadowShader->setUniform("numChunks", numRenderedChunks);
+                for (int i = 0; i < numRenderedChunks; ++i) {
+                     std::string base = "chunkWorldOffsets[" + std::to_string(i) + "]";
+                     shadowShader->setUniform(base.c_str(), chunkWorldOffsets[i]);
+                }
+                // Bind TBO Texture to a texture unit (e.g., unit 17, after MAX_BLOCK_TEXTURES=16)
+                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
+                glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
+                shadowShader->setUniformSampler("voxelDataSampler", MAX_BLOCK_TEXTURES + 1);
+
                 glm::mat4 model = glm::mat4(1.0f);
                 // Rendu du monde
                 shadowShader->setUniform("model", model);
@@ -284,6 +384,10 @@ int main() {
                                 mesh->draw();
                         }
                 }
+                // Cleanup TBO binding
+                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
+                glBindTexture(GL_TEXTURE_BUFFER, 0);
+
 
                 glCullFace(GL_BACK); // Retour au culling de face arrière par défaut
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -314,6 +418,19 @@ int main() {
                 glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES);
                 glBindTexture(GL_TEXTURE_2D, gShadowMap);
                 minecraftShader.setUniformSampler("shadowMap", MAX_BLOCK_TEXTURES);
+
+                // NOUVEAU: Envoyer les données Voxel pour la passe 2
+                minecraftShader.setUniform("chunkSize", Chunk::CHUNK_SIZE);
+                minecraftShader.setUniform("chunkHeight", Chunk::CHUNK_HEIGHT);
+                minecraftShader.setUniform("numChunks", numRenderedChunks);
+                for (int i = 0; i < numRenderedChunks; ++i) {
+                     std::string base = "chunkWorldOffsets[" + std::to_string(i) + "]";
+                     minecraftShader.setUniform(base.c_str(), chunkWorldOffsets[i]);
+                }
+                // Bind TBO Texture to a texture unit
+                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
+                glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
+                minecraftShader.setUniformSampler("voxelDataSampler", MAX_BLOCK_TEXTURES + 1);
 
                 // Directional light (sun) - Ambient est géré dans le shader principal
                 minecraftShader.setUniform("dirLight.direction", sunDirection);
@@ -358,7 +475,7 @@ int main() {
 
                         // Spotlight properties
                         // Ambient doit être 0 dans le C++ pour correspondre au shader sans occlusion
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f)); 
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f));
                         minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f) * 8.0f);
                         minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.6f, 0.0f, 0.6f) * 8.0f);
 
@@ -419,6 +536,8 @@ int main() {
                 }
                 glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES);
                 glBindTexture(GL_TEXTURE_2D, 0);
+                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
+                glBindTexture(GL_TEXTURE_BUFFER, 0); // Unbind TBO
 
 
                 if (blueDebug) {
@@ -491,6 +610,8 @@ int main() {
                 delete pair.second;
         }
 
+        glDeleteTextures(1, &gVoxelTexture);
+        glDeleteBuffers(1, &gVoxelTBO);
         glDeleteFramebuffers(1, &gShadowMapFBO);
         glDeleteTextures(1, &gShadowMap);
         delete shadowShader; // AJOUTÉ

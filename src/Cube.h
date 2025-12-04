@@ -60,6 +60,8 @@ public:
 	static const int CHUNK_SIZE = 16;
 	static const int CHUNK_HEIGHT = 64;
 
+	static const int CHUNK_VOXEL_COUNT = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+
 	Chunk(int chunkX, int chunkZ);
 	~Chunk();
 
@@ -71,6 +73,8 @@ public:
 	void setBlock(int x, int y, int z, BlockType type);
 
 	glm::vec3 getWorldPosition() const { return glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE); }
+
+	const BlockType* getRawBlocks() const { return &mBlocks[0][0][0]; }
 
 	static std::map<BlockType, BlockTexturePaths> m_textureConfig;
     static std::map<std::string, int> m_pathToTextureIndex;
@@ -110,19 +114,16 @@ public:
 	void generate(int renderDistance = 3);
 	void draw();
 
+	const std::vector<Chunk*>& getChunks() const { return mChunks; }
+
 	std::vector<glm::vec3> getRedstoneLightPositions() const;
 	std::vector<glm::vec3> World::getTorchLightPositions() const;
 
     bool setBlockAt(const glm::vec3& worldPos, BlockType type);
     BlockType getBlockAt(const glm::vec3& worldPos) const;
 
-	RaycastHit raycast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance = 5.0f);
-	bool breakBlock(const glm::vec3& origin, const glm::vec3& direction);
-	bool placeBlock(const glm::vec3& origin, const glm::vec3& direction, BlockType type);
 
 	BlockType getBlock(int x, int y, int z) const;
-	void setBlock(int x, int y, int z, BlockType type);
-	BlockType getBlock2(int x, int y, int z) const;
 	void localToChunkCoords(int worldX, int worldY, int worldZ,
                         int& chunkX, int& chunkZ,
                         int& localX, int& localY, int& localZ

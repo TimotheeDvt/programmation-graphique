@@ -28,6 +28,7 @@ class ShaderProgram {
 
         void setUniform(const GLchar* name, const glm::vec2& v);
         void setUniform(const GLchar* name, const glm::vec3& v);
+        void setUniform(const GLchar* name, const glm::ivec3& v);
         void setUniform(const GLchar* name, const glm::vec4& v);
         void setUniform(const GLchar* name, const glm::mat4& m);
         void setUniform(const GLchar* name, const GLfloat& f);
