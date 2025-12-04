@@ -112,7 +112,7 @@ public:
 	~World();
 
 	void generate(int renderDistance = 3);
-	void draw();
+	void draw() const;
 
 	const std::vector<Chunk*>& getChunks() const { return mChunks; }
 

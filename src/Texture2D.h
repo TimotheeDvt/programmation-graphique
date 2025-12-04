@@ -11,8 +11,8 @@ class Texture2D {
         virtual ~Texture2D();
 
         bool loadTexture(const string& fileName, bool generateMipMaps = true);
-        void bind(GLuint textUnit = 0);
-        void unbind(GLuint textUnit = 0);
+        void bind(GLuint textUnit = 0) const;
+        void unbind(GLuint textUnit = 0) const;
     private:
         Texture2D(const Texture2D& rhs) {}
         Texture2D& operator = (const Texture2D& rhs) {}

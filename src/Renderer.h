@@ -33,11 +33,9 @@ private:
     void initShadows();
     void initCrosshair();
 
-    void renderScene(ShaderProgram& shader, const World& world, const Scene& scene,
-                     const std::map<std::string, std::unique_ptr<Mesh>>& meshCache);
+    void renderScene(ShaderProgram& shader, const World& world, const Scene& scene, const std::map<std::string, std::unique_ptr<Mesh>>& meshCache);
 
-    void dirShadowPass(const FPSCamera& camera, const World& world, const Scene& scene,
-                       const std::map<std::string, std::unique_ptr<Mesh>>& meshCache);
+    void dirShadowPass(const FPSCamera& camera, const World& world, const Scene& scene, const std::map<std::string, std::unique_ptr<Mesh>>& meshCache);
     void pointShadowPass(const std::vector<PointLight>& pointLights, const World& world, const Scene& scene,
                          const std::map<std::string, std::unique_ptr<Mesh>>& meshCache);
     void spotShadowPass(const std::vector<SpotLight>& spotLights, const World& world, const Scene& scene,

@@ -26,14 +26,14 @@ public:
         std::string textureFile;
 };
 
-Model::Model(glm::vec3 pos, glm::vec3 scl, float angle, glm::vec3 axis, std::string meshF, std::string textureF)
+inline Model::Model(glm::vec3 pos, glm::vec3 scl, float angle, glm::vec3 axis, std::string meshF, std::string textureF)
     : position(pos), scale(scl), meshFile(meshF), textureFile(textureF) {
         rotation.angle = angle;
         rotation.axis = axis;
         std::cout << "Model created at position (" << position.x << ", " << position.y << ", " << position.z << ") with scale (" << scale.x << ", " << scale.y << ", " << scale.z << ") and rotation angle " << rotation.angle << " around axis (" << rotation.axis.x << ", " << rotation.axis.y << ", " << rotation.axis.z << ")" << std::endl;
 }
 
-Model::Model(glm::vec3 pos, glm::vec3 scl, Rotation rot, std::string meshF, std::string textureF)
+inline Model::Model(glm::vec3 pos, glm::vec3 scl, Rotation rot, std::string meshF, std::string textureF)
     : position(pos), scale(scl), rotation(rot), meshFile(meshF), textureFile(textureF)
 { }
 

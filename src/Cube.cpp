@@ -655,7 +655,7 @@ void World::generate(int renderDistance) {
         }
 }
 
-void World::draw() {
+void World::draw() const {
         for (auto chunk : mChunks) {
                 chunk->draw();
         }
