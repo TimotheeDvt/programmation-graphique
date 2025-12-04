@@ -5,6 +5,9 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <string>
+#include <iostream>
+
 struct Rotation {
         float angle;
         glm::vec3 axis;

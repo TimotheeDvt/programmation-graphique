@@ -13,7 +13,7 @@ find_package(OpenGL REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
 # Collect source files
-file(GLOB SRC_FILES "./src/*.cpp")
+file(GLOB SRC_FILES "./src/*.cpp" "./src/*.h")
 
 # Build executable
 add_executable(main main.cpp ${SRC_FILES})

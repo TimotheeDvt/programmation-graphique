@@ -1,6 +1,10 @@
 #version 330 core
 
-#define MAX_BLOCK_TEXTURES 16
+// These values should match Constants.h
+#define MAX_BLOCK_TEXTURES 16 
+#define MAX_POINT_LIGHTS 32
+#define MAX_SPOT_LIGHTS 8
+
 struct Material {
         vec3 ambient;
         sampler2D diffuseMaps[MAX_BLOCK_TEXTURES];
@@ -37,8 +41,6 @@ struct SpotLight {
         float cosInnerCone;
         float cosOuterCone;
 };
-#define MAX_POINT_LIGHTS 32
-#define MAX_SPOT_LIGHTS
 
 // Global Uniforms (Lights and Camera)
 uniform PointLight pointLights[MAX_POINT_LIGHTS];
@@ -118,7 +120,7 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec
         float diff = max(dot(normal, lightDir), 0.0);
         vec3 diffuse = light.diffuse * diff * texColor * shadow;
         // Applique l'ombre
-
+ 
         // Specular
         vec3 halfDir = normalize(lightDir + viewDir);
         float spec = pow(max(dot(normal, halfDir), 0.0), material.shininess);
