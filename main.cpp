@@ -8,6 +8,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include "./src/ShaderProgram.h"
 #include "./src/Texture2D.h"
 #include "./src/Camera.h"
@@ -22,9 +23,9 @@
 #define MAX_SPOT_LIGHTS 8
 Texture2D gBlockTextures[MAX_BLOCK_TEXTURES];
 
-Scene scene; // Déclaration de l'instance de la scène
-std::map<std::string, Mesh*> meshCache; // Cache pour les données des maillages (OBJ)
-std::map<std::string, Texture2D*> modelTextureCache; // Cache pour les textures des modèles
+Scene scene;
+std::map<std::string, Mesh*> meshCache;
+std::map<std::string, Texture2D*> modelTextureCache;
 
 const char* APP_TITLE = "Minecraft Clone - OpenGL Demo";
 int gWindowWidth = 1280;
@@ -68,75 +69,98 @@ ShaderProgram* debugLineShader = nullptr;
 GLuint debugPointVAO = 0;
 GLuint debugPointVBO = 0;
 
-const unsigned int SHADOW_WIDTH = 4096;
-const unsigned int SHADOW_HEIGHT = 4096;
-GLuint gShadowMapFBO;
-GLuint gShadowMap;
-ShaderProgram* shadowShader = nullptr;
+// Directional Shadow Map
+const unsigned int DIR_SHADOW_WIDTH = 2048; // Réduit pour la perf (anciennement 4096)
+const unsigned int DIR_SHADOW_HEIGHT = 2048; // Réduit pour la perf
+GLuint gDirShadowMapFBO;
+GLuint gDirShadowMap;
 
-// NOUVEAU : TBO Globals
-#define MAX_CHUNKS_RENDERED 81
-GLuint gVoxelTBO = 0; // Buffer Object
-GLuint gVoxelTexture = 0; // Texture Object (Buffer Texture)
-std::vector<GLint> gBlockSSBOData;
+// Point Light Shadow Map (Cube Map)
+const unsigned int POINT_SHADOW_WIDTH = 1024;
+const unsigned int POINT_SHADOW_HEIGHT = 1024;
+const float POINT_NEAR_PLANE = 0.1f;
+const float POINT_FAR_PLANE = 20.0f;
+GLuint gPointShadowMapFBO;
+GLuint gPointShadowMap;
+ShaderProgram* pointDepthShader = nullptr; // Shader pour la passe de profondeur des points
 
+// Spot Light Shadow Maps (2D Maps Array)
+const unsigned int SPOT_SHADOW_WIDTH = 1024;
+const unsigned int SPOT_SHADOW_HEIGHT = 1024;
+const float SPOT_NEAR_PLANE = 0.1f;
+const float SPOT_FAR_PLANE = 30.0f;
+// On utilise les textures des points de lumières existantes pour les spots
+GLuint gSpotShadowMapFBOs[MAX_SPOT_LIGHTS];
+GLuint gSpotShadowMaps[MAX_SPOT_LIGHTS];
+
+// Shader de profondeur générique (réutilise shadow_dir.vert/frag)
+ShaderProgram* depthShader = nullptr;
 
 bool initShadows() {
-        // 1. Créer le FBO
-        glGenFramebuffers(1, &gShadowMapFBO);
-
-        // 2. Créer la texture de profondeur (Shadow Map)
-        glGenTextures(1, &gShadowMap);
-        glBindTexture(GL_TEXTURE_2D, gShadowMap);
+        // --- 1. Directional Shadow Map ---
+        glGenFramebuffers(1, &gDirShadowMapFBO);
+        glGenTextures(1, &gDirShadowMap);
+        glBindTexture(GL_TEXTURE_2D, gDirShadowMap);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
-                        SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        // Paramètres pour la gestion des bords et du filtrage
+                DIR_SHADOW_WIDTH, DIR_SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL
+        );
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // Couleur blanche pour les zones hors champ
+        float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
         glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-
-        // 3. Attacher la texture de profondeur au FBO
-        glBindFramebuffer(GL_FRAMEBUFFER, gShadowMapFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gShadowMap, 0);
-
-        // 4. Configurer le FBO pour ne pas avoir de sortie couleur
+        glBindFramebuffer(GL_FRAMEBUFFER, gDirShadowMapFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gDirShadowMap, 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
-
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-                std::cerr << "Framebuffer not complete!" << std::endl;
+                std::cerr << "Dir Shadow Framebuffer not complete!" << std::endl;
                 return false;
+        }
+
+        // --- 2. Point Light Shadow Map (Cube Map) ---
+        glGenFramebuffers(1, &gPointShadowMapFBO);
+        glGenTextures(1, &gPointShadowMap);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, gPointShadowMap);
+        for (unsigned int i = 0; i < 6; ++i) {
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT,
+                        POINT_SHADOW_WIDTH, POINT_SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL
+                );
+        }
+        // Utiliser GL_LINEAR pour un meilleur lissage des ombres
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, gPointShadowMapFBO);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, gPointShadowMap, 0);
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "Point Shadow Framebuffer not complete!" << std::endl;
+                return false;
+        }
+
+        // --- 3. Spot Light Shadow Maps (Array of 2D Maps) ---
+        for (int i = 0; i < MAX_SPOT_LIGHTS; ++i) {
+                glGenFramebuffers(1, &gSpotShadowMapFBOs[i]);
+                glGenTextures(1, &gSpotShadowMaps[i]);
+                glBindTexture(GL_TEXTURE_2D, gSpotShadowMaps[i]);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+                        SPOT_SHADOW_WIDTH, SPOT_SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL
+                );
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+                glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return true;
 }
-
-// NOUVEAU : initVoxelTBO()
-bool initVoxelTBO(int maxChunks) {
-        // 1. Créer le Buffer Object (BO)
-        glGenBuffers(1, &gVoxelTBO);
-        glBindBuffer(GL_TEXTURE_BUFFER, gVoxelTBO);
-
-        // 2. Allouer le stockage pour le buffer
-        gBlockSSBOData.resize(maxChunks * Chunk::CHUNK_VOXEL_COUNT, 0);
-        // Utiliser GL_TEXTURE_BUFFER comme cible
-        glBufferData(GL_TEXTURE_BUFFER, gBlockSSBOData.size() * sizeof(GLint), gBlockSSBOData.data(), GL_DYNAMIC_DRAW);
-
-        // 3. Créer le Texture Object (TO)
-        glGenTextures(1, &gVoxelTexture);
-        glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
-        // 4. Attacher le Buffer Object à la Texture Object
-        glTexBuffer(GL_TEXTURE_BUFFER, GL_R32I, gVoxelTBO); // GL_R32I pour les entiers 32-bit (BlockType)
-
-        glBindBuffer(GL_TEXTURE_BUFFER, 0);
-        glBindTexture(GL_TEXTURE_BUFFER, 0);
-        return true;
-}
-
 
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
@@ -147,19 +171,24 @@ int main() {
         }
         initCrosshair();
 
-        if(!initShadows()) { // AJOUTÉ: Initialisation des ombres
+        if(!initShadows()) {
                 std::cerr << "Shadow initialization failed" << std::endl;
                 return -1;
         }
 
-        // NOUVEAU: Initialisation du TBO
-        if (!initVoxelTBO(MAX_CHUNKS_RENDERED)) {
-             std::cerr << "TBO initialization failed" << std::endl;
-             return -1;
-        }
+        // NOUVEAU: Chargement des shaders de profondeur
+        depthShader = new ShaderProgram();
+        // Utilise le shader de profondeur simple pour Dir/Spot (écrit Z/W)
+        depthShader->loadShaders("./shadow_dir.vert", "./shadow_dir.frag");
+
+        pointDepthShader = new ShaderProgram();
+        // Shader pour point light (écrit la distance linéaire normalisée)
+        // Réutilise shadow_dir.vert car il est simple (juste la position)
+        pointDepthShader->loadShaders("./shadow_dir.vert", "./depth_point.frag");
 
 
         if (blueDebug) {
+                // ... (debug shader init) ...
                 debugLineShader = new ShaderProgram();
                 debugLineShader->loadShaders("./debug_line.vert", "./debug_line.frag");
                 glGenVertexArrays(1, &debugLineVAO);
@@ -180,15 +209,12 @@ int main() {
                 glBindVertexArray(0);
         }
 
-        shadowShader = new ShaderProgram();
-        shadowShader->loadShaders("./shadow_dir.vert", "./shadow_dir.frag"); // AJOUTÉ
-
         ShaderProgram minecraftShader;
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
 
         world.generate(4);
 
-        // NOUVEAU: Préchargement des maillages et textures
+        // ... (model loading, texture loading) ...
         for (const auto& modelData : scene.models) {
                 // 1. Charger le maillage (Enderman.obj, ukulele.obj)
                 if (meshCache.find(modelData.meshFile) == meshCache.end()) {
@@ -230,14 +256,14 @@ int main() {
                         std::cerr << "Échec du chargement de la texture: " << path << std::endl;
                 }
         }
-
         std::cout << "World generated successfully!" << std::endl;
 
         std::vector<glm::vec3> frameLights;
 
         double lastTime = glfwGetTime();
 
-        glm::mat4 lightSpaceMatrix;
+        glm::mat4 lightSpaceMatrix; // pour la lumière directionnelle
+        glm::mat4 spotLightSpaceMatrices[MAX_SPOT_LIGHTS];
 
         while (!glfwWindowShouldClose(gWindow)) {
                 std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
@@ -250,28 +276,27 @@ int main() {
                 // Ajouter les lumières redstone
                 for (const auto& pos : redstoneLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
-                                frameLights.push_back(pos);
+                        frameLights.push_back(pos);
                 }
                 int redstoneLightCount = frameLights.size();
 
                 // Ajouter les lumières torches
                 for (const auto& pos : torchLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
-                                frameLights.push_back(pos);
+                        frameLights.push_back(pos);
                 }
                 int worldLightCount = frameLights.size();
 
                 // Ajouter les spotlights des modèles (Enderman)
                 for (const auto& modelData : scene.models) {
                         if (spotLights.size() >= MAX_SPOT_LIGHTS) break;
-                        // Direction du regard (vers l'avant du modèle)
                         glm::vec3 lookDirection = glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f));
-                        // Position des yeux
                         glm::vec3 eyeLightPos = modelData.position + glm::vec3(0.1f, 2.75f, 0.4f);
                         spotLights.push_back({eyeLightPos, lookDirection});
                         eyeLightPos = modelData.position + glm::vec3(-0.1f, 2.75f, 0.45f);
                         spotLights.push_back({eyeLightPos, lookDirection});
                 }
+                int spotLightCount = spotLights.size();
 
                 showFPS(gWindow);
 
@@ -281,97 +306,26 @@ int main() {
                 glfwPollEvents();
                 update(deltaTime);
 
-                // =================================================================
-                // NOUVEAU: Préparation et envoi des données de blocs au GPU (TBO)
-                // =================================================================
-                const auto& chunks = world.getChunks();
-                int currentChunkOffset = 0;
-
-                // Vérifier et redimensionner le TBO si nécessaire (rare)
-                int requiredVoxelCount = (int)chunks.size() * Chunk::CHUNK_VOXEL_COUNT;
-                if (gBlockSSBOData.size() < requiredVoxelCount) {
-                    gBlockSSBOData.resize(requiredVoxelCount);
-                    glBindBuffer(GL_TEXTURE_BUFFER, gVoxelTBO);
-                    glBufferData(GL_TEXTURE_BUFFER, gBlockSSBOData.size() * sizeof(GLint), gBlockSSBOData.data(), GL_DYNAMIC_DRAW);
-                    glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
-                    glTexBuffer(GL_TEXTURE_BUFFER, GL_R32I, gVoxelTBO);
-                }
-
-                // Buffer pour les positions mondiales des chunks
-                glm::ivec3 chunkWorldOffsets[MAX_CHUNKS_RENDERED];
-                int numRenderedChunks = glm::min((int)chunks.size(), MAX_CHUNKS_RENDERED);
-
-                // Remplir le TBO avec l'état des blocs
-                for (int i = 0; i < numRenderedChunks; ++i) {
-                    Chunk* chunk = chunks[i];
-                    const BlockType* rawBlocks = chunk->getRawBlocks();
-                    glm::vec3 worldPos = chunk->getWorldPosition();
-
-                    chunkWorldOffsets[i] = glm::ivec3(worldPos);
-
-                    for (int x = 0; x < Chunk::CHUNK_SIZE; ++x) {
-                        for (int y = 0; y < Chunk::CHUNK_HEIGHT; ++y) {
-                            for (int z = 0; z < Chunk::CHUNK_SIZE; ++z) {
-                                // Index 1D pour TBO
-                                int flatIdx = currentChunkOffset + (x * Chunk::CHUNK_HEIGHT * Chunk::CHUNK_SIZE) + (y * Chunk::CHUNK_SIZE) + z;
-
-                                // Index 1D pour l'array 3D C++
-                                int rawIdx = (x * Chunk::CHUNK_HEIGHT * Chunk::CHUNK_SIZE) + (y * Chunk::CHUNK_SIZE) + z;
-
-                                gBlockSSBOData[flatIdx] = (GLint)rawBlocks[rawIdx];
-                            }
-                        }
-                    }
-                    currentChunkOffset += Chunk::CHUNK_VOXEL_COUNT;
-                }
-
-                // Envoi des données au GPU
-                glBindBuffer(GL_TEXTURE_BUFFER, gVoxelTBO);
-                glBufferSubData(GL_TEXTURE_BUFFER, 0, currentChunkOffset * sizeof(GLint), gBlockSSBOData.data());
-                glBindBuffer(GL_TEXTURE_BUFFER, 0);
-
-
-                // --- PASS 1: Rendu de la carte de profondeur (Shadow Map) ---
+                // --- PASS 1A: Rendu de la carte de profondeur Directionnelle ---
                 glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
-                float near_plane = 1.0f, far_plane = 70.0f;
-                // Crée une matrice de projection orthographique pour la lumière
-                glm::mat4 lightProjection = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, near_plane, far_plane);
-
-                // Crée une matrice de vue de la lumière, centrée sur la caméra du joueur
+                float dir_near_plane = 1.0f, dir_far_plane = 70.0f;
+                glm::mat4 dirLightProjection = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, dir_near_plane, dir_far_plane);
                 glm::vec3 centerPos = fpsCamera.getPosition();
-                glm::mat4 lightView = glm::lookAt(centerPos - sunDirection * 20.0f, // Position de la caméra de lumière
-                                                  centerPos,                         // Cible (centre du champ de vision)
-                                                  glm::vec3(0.0f, 1.0f, 0.0f));       // Up vector
+                glm::mat4 dirLightView = glm::lookAt(centerPos - sunDirection * 20.0f, centerPos, glm::vec3(0.0f, 1.0f, 0.0f));
+                lightSpaceMatrix = dirLightProjection * dirLightView;
 
-                lightSpaceMatrix = lightProjection * lightView;
-
-                glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-                glBindFramebuffer(GL_FRAMEBUFFER, gShadowMapFBO);
+                glViewport(0, 0, DIR_SHADOW_WIDTH, DIR_SHADOW_HEIGHT);
+                glBindFramebuffer(GL_FRAMEBUFFER, gDirShadowMapFBO);
                 glClear(GL_DEPTH_BUFFER_BIT);
-                glCullFace(GL_FRONT); // Culling de face avant pour éviter le shadow acne
+                glCullFace(GL_FRONT);
 
-                shadowShader->use();
-                shadowShader->setUniform("lightSpaceMatrix", lightSpaceMatrix);
-
-                // NOUVEAU: Envoyer les données Voxel pour la passe 1
-                shadowShader->setUniform("chunkSize", Chunk::CHUNK_SIZE);
-                shadowShader->setUniform("chunkHeight", Chunk::CHUNK_HEIGHT);
-                shadowShader->setUniform("numChunks", numRenderedChunks);
-                for (int i = 0; i < numRenderedChunks; ++i) {
-                     std::string base = "chunkWorldOffsets[" + std::to_string(i) + "]";
-                     shadowShader->setUniform(base.c_str(), chunkWorldOffsets[i]);
-                }
-                // Bind TBO Texture to a texture unit (e.g., unit 17, after MAX_BLOCK_TEXTURES=16)
-                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
-                glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
-                shadowShader->setUniformSampler("voxelDataSampler", MAX_BLOCK_TEXTURES + 1);
+                depthShader->use(); // Utilise le shader simple pour la profondeur (z/w)
+                depthShader->setUniform("lightSpaceMatrix", lightSpaceMatrix);
 
                 glm::mat4 model = glm::mat4(1.0f);
-                // Rendu du monde
-                shadowShader->setUniform("model", model);
+                depthShader->setUniform("model", model);
                 world.draw();
 
-                // Rendu des modèles dans le Shadow Map
                 for (const auto& modelData : scene.models) {
                         Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
                         if (mesh) {
@@ -379,17 +333,103 @@ int main() {
                                 modelMatrix = glm::translate(modelMatrix, modelData.position);
                                 modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
                                 modelMatrix = glm::scale(modelMatrix, modelData.scale);
-
-                                shadowShader->setUniform("model", modelMatrix);
+                                depthShader->setUniform("model", modelMatrix);
                                 mesh->draw();
                         }
                 }
-                // Cleanup TBO binding
-                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
-                glBindTexture(GL_TEXTURE_BUFFER, 0);
+                glCullFace(GL_BACK);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-                glCullFace(GL_BACK); // Retour au culling de face arrière par défaut
+                // --- PASS 1B: Rendu de la carte de profondeur Cube Map (Point Lights) ---
+                glm::mat4 pointShadowProj = glm::perspective(glm::radians(90.0f), (float)POINT_SHADOW_WIDTH / (float)POINT_SHADOW_HEIGHT, POINT_NEAR_PLANE, POINT_FAR_PLANE);
+                std::vector<glm::mat4> pointShadowTransforms;
+
+                glViewport(0, 0, POINT_SHADOW_WIDTH, POINT_SHADOW_HEIGHT);
+                glBindFramebuffer(GL_FRAMEBUFFER, gPointShadowMapFBO);
+
+                pointDepthShader->use(); // Utilise le shader qui écrit la distance linéaire normalisée
+                pointDepthShader->setUniform("farPlane", POINT_FAR_PLANE);
+
+                for (int i = 0; i < worldLightCount; i++) {
+                        glm::vec3 lightPos = frameLights[i];
+                        pointDepthShader->setUniform("lightPos", lightPos);
+
+                        pointShadowTransforms.clear();
+                        // Les 6 directions (faces)
+                        pointShadowTransforms.push_back(pointShadowProj * glm::lookAt(lightPos, lightPos + glm::vec3( 1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)));
+                        pointShadowTransforms.push_back(pointShadowProj * glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f,  0.0f,  0.0f), glm::vec3(0.0f, -1.0f,  0.0f)));
+                        pointShadowTransforms.push_back(pointShadowProj * glm::lookAt(lightPos, lightPos + glm::vec3( 0.0f,  1.0f,  0.0f), glm::vec3(0.0f,  0.0f,  1.0f)));
+                        pointShadowTransforms.push_back(pointShadowProj * glm::lookAt(lightPos, lightPos + glm::vec3( 0.0f, -1.0f,  0.0f), glm::vec3(0.0f,  0.0f, -1.0f)));
+                        pointShadowTransforms.push_back(pointShadowProj * glm::lookAt(lightPos, lightPos + glm::vec3( 0.0f,  0.0f,  1.0f), glm::vec3(0.0f, -1.0f,  0.0f)));
+                        pointShadowTransforms.push_back(pointShadowProj * glm::lookAt(lightPos, lightPos + glm::vec3( 0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f)));
+
+                        // Rendu de la scène
+                        for (int j = 0; j < 6; ++j) {
+                                // Attacher la j-ième face du Cube Map
+                                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + j, gPointShadowMap, 0);
+                                glClear(GL_DEPTH_BUFFER_BIT);
+
+                                pointDepthShader->setUniform("lightSpaceMatrix", pointShadowTransforms[j]);
+
+                                pointDepthShader->setUniform("model", model);
+                                world.draw();
+
+                                for (const auto& modelData : scene.models) {
+                                        Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
+                                        if (mesh) {
+                                                glm::mat4 modelMatrix = glm::mat4(1.0f);
+                                                modelMatrix = glm::translate(modelMatrix, modelData.position);
+                                                modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+                                                modelMatrix = glm::scale(modelMatrix, modelData.scale);
+                                                pointDepthShader->setUniform("model", modelMatrix);
+                                                mesh->draw();
+                                        }
+                                }
+                        }
+                }
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+                // --- PASS 1C: Rendu des Shadow Maps 2D (Spot Lights) ---
+                glViewport(0, 0, SPOT_SHADOW_WIDTH, SPOT_SHADOW_HEIGHT);
+                depthShader->use();
+
+                for (int i = 0; i < spotLightCount; ++i) {
+                        glm::vec3 lightPos = spotLights[i].first;
+                        glm::vec3 lightDir = spotLights[i].second;
+
+                        // FOV basé sur le cosOuterCone du Enderman (25.0f * 2)
+                        float outerCone = 25.0f;
+                        float fov = glm::radians(outerCone * 2.0f);
+
+                        glm::mat4 spotProjection = glm::perspective(fov, 1.0f, SPOT_NEAR_PLANE, SPOT_FAR_PLANE);
+                        glm::mat4 spotView = glm::lookAt(lightPos, lightPos + lightDir, glm::vec3(0.0f, 1.0f, 0.0f));
+                        spotLightSpaceMatrices[i] = spotProjection * spotView;
+
+                        // Attacher le FBO spécifique au spot light i
+                        glBindFramebuffer(GL_FRAMEBUFFER, gSpotShadowMapFBOs[i]);
+                        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gSpotShadowMaps[i], 0);
+                        glClear(GL_DEPTH_BUFFER_BIT);
+
+                        depthShader->setUniform("lightSpaceMatrix", spotLightSpaceMatrices[i]);
+
+                        depthShader->setUniform("model", model);
+                        world.draw();
+
+                        for (const auto& modelData : scene.models) {
+                                Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
+                                if (mesh) {
+                                        glm::mat4 modelMatrix = glm::mat4(1.0f);
+                                        modelMatrix = glm::translate(modelMatrix, modelData.position);
+                                        modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+                                        modelMatrix = glm::scale(modelMatrix, modelData.scale);
+                                        depthShader->setUniform("model", modelMatrix);
+                                        mesh->draw();
+                                }
+                        }
+                }
+
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
@@ -398,108 +438,102 @@ int main() {
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
                 glm::mat4 view = fpsCamera.getViewMatrix();
-
                 float fov = fpsCamera.getFOV();
-                float aspectRatio = (float)gWindowWidth / (float)gWindowHeight;
+                float aspectRatio = (float)gWindowWidth / (float)gWindowHeight / 1.0f;
                 glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, 0.1f, 200.0f);
-
                 glm::vec3 viewPos = fpsCamera.getPosition();
 
-                minecraftShader.use();
+                ShaderProgram& minecraftShaderRef = minecraftShader; // Utiliser une référence
 
-                model = glm::mat4(1.0f); // Re-initialisation du model matrix pour le monde
-                minecraftShader.setUniform("model", model);
-                minecraftShader.setUniform("view", view);
-                minecraftShader.setUniform("projection", projection);
-                minecraftShader.setUniform("viewPos", viewPos);
+                minecraftShaderRef.use();
 
-                // Passer la matrice d'espace lumière et le Shadow Map (unité de texture 16)
-                minecraftShader.setUniform("lightSpaceMatrix", lightSpaceMatrix);
+                model = glm::mat4(1.0f);
+                minecraftShaderRef.setUniform("model", model);
+                minecraftShaderRef.setUniform("view", view);
+                minecraftShaderRef.setUniform("projection", projection);
+                minecraftShaderRef.setUniform("viewPos", viewPos);
+
+                // Directional Shadow Map
+                minecraftShaderRef.setUniform("lightSpaceMatrix", lightSpaceMatrix);
                 glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES);
-                glBindTexture(GL_TEXTURE_2D, gShadowMap);
-                minecraftShader.setUniformSampler("shadowMap", MAX_BLOCK_TEXTURES);
+                glBindTexture(GL_TEXTURE_2D, gDirShadowMap);
+                minecraftShaderRef.setUniformSampler("dirShadowMap", MAX_BLOCK_TEXTURES);
 
-                // NOUVEAU: Envoyer les données Voxel pour la passe 2
-                minecraftShader.setUniform("chunkSize", Chunk::CHUNK_SIZE);
-                minecraftShader.setUniform("chunkHeight", Chunk::CHUNK_HEIGHT);
-                minecraftShader.setUniform("numChunks", numRenderedChunks);
-                for (int i = 0; i < numRenderedChunks; ++i) {
-                     std::string base = "chunkWorldOffsets[" + std::to_string(i) + "]";
-                     minecraftShader.setUniform(base.c_str(), chunkWorldOffsets[i]);
-                }
-                // Bind TBO Texture to a texture unit
+                // Point Light Shadow Map
                 glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
-                glBindTexture(GL_TEXTURE_BUFFER, gVoxelTexture);
-                minecraftShader.setUniformSampler("voxelDataSampler", MAX_BLOCK_TEXTURES + 1);
+                glBindTexture(GL_TEXTURE_CUBE_MAP, gPointShadowMap);
+                minecraftShaderRef.setUniformSampler("pointShadowMap", MAX_BLOCK_TEXTURES + 1);
+                minecraftShaderRef.setUniform("pointFarPlane", POINT_FAR_PLANE);
 
-                // Directional light (sun) - Ambient est géré dans le shader principal
-                minecraftShader.setUniform("dirLight.direction", sunDirection);
-                minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
-                minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
-                minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
+                // Spot Light Shadow Maps
+                for (int i = 0; i < spotLightCount; ++i) {
+                        std::string matrixBase = "spotLightSpaceMatrices[" + std::to_string(i) + "]";
+                        minecraftShaderRef.setUniform(matrixBase.c_str(), spotLightSpaceMatrices[i]);
 
-                // === ÉTAPE 2: Configurer les point lights ===
-                minecraftShader.setUniform("numPointLights", worldLightCount);
+                        glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 2 + i);
+                        glBindTexture(GL_TEXTURE_2D, gSpotShadowMaps[i]);
+                        std::string samplerBase = "spotShadowMaps[" + std::to_string(i) + "]";
+                        minecraftShaderRef.setUniformSampler(samplerBase.c_str(), MAX_BLOCK_TEXTURES + 2 + i);
+                }
+
+                // Directional light
+                minecraftShaderRef.setUniform("dirLight.direction", sunDirection);
+                minecraftShaderRef.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
+                minecraftShaderRef.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
+                minecraftShaderRef.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
+
+                // Point lights
+                minecraftShaderRef.setUniform("numPointLights", worldLightCount);
 
                 for (int i = 0; i < worldLightCount; i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
-                        minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
-                        minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
-
-                        // Ambient doit être 0 dans le C++ pour correspondre au shader sans occlusion
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f));
+                        minecraftShaderRef.setUniform((base + ".position").c_str(), frameLights[i]);
+                        minecraftShaderRef.setUniform((base + ".constant").c_str(), 1.0f);
+                        minecraftShaderRef.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f));
 
                         if (i < redstoneLightCount) {
-                                // Redstone Light
-                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
-                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
-                                minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
-                                minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
+                                minecraftShaderRef.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
+                                minecraftShaderRef.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
+                                minecraftShaderRef.setUniform((base + ".linear").c_str(), 0.14f);
+                                minecraftShaderRef.setUniform((base + ".exponant").c_str(), 0.07f);
                         }
                         else {
-                                // Torch Light
-                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.8f, 0.2f));
-                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.4f, 0.1f));
-                                minecraftShader.setUniform((base + ".linear").c_str(), 0.22f);
-                                minecraftShader.setUniform((base + ".exponant").c_str(), 0.20f);
+                                minecraftShaderRef.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.8f, 0.2f));
+                                minecraftShaderRef.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.4f, 0.1f));
+                                minecraftShaderRef.setUniform((base + ".linear").c_str(), 0.22f);
+                                minecraftShaderRef.setUniform((base + ".exponant").c_str(), 0.20f);
                         }
                 }
 
-                // === ÉTAPE 3: Configurer les spotlights (Enderman eyes) ===
-                minecraftShader.setUniform("numSpotLights", (int)spotLights.size());
+                // Spotlights
+                minecraftShaderRef.setUniform("numSpotLights", spotLightCount);
 
-                for (int i = 0; i < spotLights.size(); i++) {
+                for (int i = 0; i < spotLightCount; i++) {
                         std::string base = "spotLights[" + std::to_string(i) + "]";
-                        minecraftShader.setUniform((base + ".position").c_str(), spotLights[i].first);
-                        minecraftShader.setUniform((base + ".direction").c_str(), spotLights[i].second);
-
-                        // Spotlight properties
-                        // Ambient doit être 0 dans le C++ pour correspondre au shader sans occlusion
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f));
-                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f) * 8.0f);
-                        minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.6f, 0.0f, 0.6f) * 8.0f);
-
-                        // Attenuation
-                        minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
-                        minecraftShader.setUniform((base + ".linear").c_str(), 0.09f);
-                        minecraftShader.setUniform((base + ".exponant").c_str(), 0.032f);
-
-                        // Spotlight cone angles
-                        minecraftShader.setUniform((base + ".cosInnerCone").c_str(), glm::cos(glm::radians(12.5f)));
-                        minecraftShader.setUniform((base + ".cosOuterCone").c_str(), glm::cos(glm::radians(25.0f)));
+                        minecraftShaderRef.setUniform((base + ".position").c_str(), spotLights[i].first);
+                        minecraftShaderRef.setUniform((base + ".direction").c_str(), spotLights[i].second);
+                        minecraftShaderRef.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f));
+                        minecraftShaderRef.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f) * 8.0f);
+                        minecraftShaderRef.setUniform((base + ".specular").c_str(), glm::vec3(0.6f, 0.0f, 0.6f) * 8.0f);
+                        minecraftShaderRef.setUniform((base + ".constant").c_str(), 1.0f);
+                        minecraftShaderRef.setUniform((base + ".linear").c_str(), 0.09f);
+                        minecraftShaderRef.setUniform((base + ".exponant").c_str(), 0.032f);
+                        minecraftShaderRef.setUniform((base + ".cosInnerCone").c_str(), glm::cos(glm::radians(12.5f)));
+                        minecraftShaderRef.setUniform((base + ".cosOuterCone").c_str(), glm::cos(glm::radians(25.0f)));
                 }
 
-                // === ÉTAPE 4: Configurer les matériaux ===
-                minecraftShader.setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
-                minecraftShader.setUniformSampler("material.diffuseMap", 0);
-                minecraftShader.setUniform("material.specular", glm::vec3(0.1f, 0.1f, 0.1f));
-                minecraftShader.setUniform("material.shininess", 8.0f);
+                // Materials
+                minecraftShaderRef.setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
+                minecraftShaderRef.setUniformSampler("material.diffuseMap", 0);
+                minecraftShaderRef.setUniform("material.specular", glm::vec3(0.1f, 0.1f, 0.1f));
+                minecraftShaderRef.setUniform("material.shininess", 8.0f);
 
                 for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].bind(i);
                         std::string samplerName = "material.diffuseMaps[" + std::to_string(i) + "]";
-                        minecraftShader.setUniformSampler(samplerName.c_str(), i);
+                        minecraftShaderRef.setUniformSampler(samplerName.c_str(), i);
                 }
+
 
                 // === ÉTAPE 5: Dessiner le monde ===
                 world.draw();
@@ -515,11 +549,11 @@ int main() {
                                 modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
                                 modelMatrix = glm::scale(modelMatrix, modelData.scale);
 
-                                minecraftShader.setUniform("model", modelMatrix);
+                                minecraftShaderRef.setUniform("model", modelMatrix);
 
                                 if (texture) {
                                         texture->bind(0);
-                                        minecraftShader.setUniformSampler("material.diffuseMap", 0);
+                                        minecraftShaderRef.setUniformSampler("material.diffuseMap", 0);
                                 }
 
                                 mesh->draw();
@@ -530,15 +564,18 @@ int main() {
                         }
                 }
 
-                // Unbind textures and shadow map
+                // Unbind textures and shadow maps
                 for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].unbind(i);
                 }
                 glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES);
                 glBindTexture(GL_TEXTURE_2D, 0);
                 glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 1);
-                glBindTexture(GL_TEXTURE_BUFFER, 0); // Unbind TBO
-
+                glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+                for (int i = 0; i < spotLightCount; ++i) {
+                        glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES + 2 + i);
+                        glBindTexture(GL_TEXTURE_2D, 0);
+                }
 
                 if (blueDebug) {
                         glm::vec3 origin = fpsCamera.getPosition();
@@ -610,11 +647,17 @@ int main() {
                 delete pair.second;
         }
 
-        glDeleteTextures(1, &gVoxelTexture);
-        glDeleteBuffers(1, &gVoxelTBO);
-        glDeleteFramebuffers(1, &gShadowMapFBO);
-        glDeleteTextures(1, &gShadowMap);
-        delete shadowShader; // AJOUTÉ
+        glDeleteFramebuffers(1, &gDirShadowMapFBO);
+        glDeleteTextures(1, &gDirShadowMap);
+        glDeleteFramebuffers(1, &gPointShadowMapFBO);
+        glDeleteTextures(1, &gPointShadowMap);
+        for (int i = 0; i < MAX_SPOT_LIGHTS; ++i) {
+                glDeleteFramebuffers(1, &gSpotShadowMapFBOs[i]);
+                glDeleteTextures(1, &gSpotShadowMaps[i]);
+        }
+
+        delete depthShader;
+        delete pointDepthShader;
         cleanupCrosshair();
         glfwTerminate();
         return 0;
@@ -753,13 +796,13 @@ void update(double elapsedTime) {
 
         glfwSetCursorPos(gWindow, gWindowWidth/2.0, gWindowHeight/2.0);
 
-        float physicsMoveSpeed = 1.0f; // Vitesse d'accélération au sol
+        float physicsMoveSpeed = 5.0f; // Vitesse d'accélération au sol
         if (glfwGetKey(gWindow, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
                 MOVE_SPEED = 80.0f;
-                physicsMoveSpeed = 2.5f;
+                physicsMoveSpeed = 10.0f;
         } else {
                 MOVE_SPEED = 20.0f;
-                physicsMoveSpeed = 1.0f;
+                physicsMoveSpeed = 5.0f;
         }
 
         if (gIsFlying) {

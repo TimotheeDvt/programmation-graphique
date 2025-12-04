@@ -14,6 +14,7 @@ copy shaders\lighting_dir.frag
 copy shaders\lighting_dir.vert
 copy shaders\shadow_dir.frag
 copy shaders\shadow_dir.vert
+copy shaders\depth_point.frag
 
 REM Build the project
 cmake --build build --config Release
