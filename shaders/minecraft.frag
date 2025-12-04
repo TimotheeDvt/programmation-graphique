@@ -62,6 +62,25 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec
 vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor);
 vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor);
 
+// Fonction pour calculer l'occlusion basée sur la normale
+float calculateOcclusion(vec3 lightDir, vec3 normal, float distance) {
+        // Si la lumière arrive par derrière la surface, occlusion complète
+        float normalDot = dot(normal, lightDir);
+        if (normalDot <= 0.0) {
+                return 0.0;
+        }
+
+        // Atténuation supplémentaire basée sur l'angle
+        // Plus l'angle est rasant, plus l'occlusion est forte
+        float angleAttenuation = smoothstep(0.0, 0.3, normalDot);
+
+        // Atténuation basée sur la distance pour simuler l'occlusion
+        // Les lumières lointaines sont plus facilement bloquées
+        float distanceAttenuation = smoothstep(15.0, 5.0, distance);
+
+        return mix(angleAttenuation, 1.0, distanceAttenuation);
+}
+
 void main() {
         vec3 norm = normalize(Normal);
         vec3 viewDir = normalize(viewPos - FragPos);
@@ -113,6 +132,10 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec
 
 vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor) {
         vec3 lightDir = normalize(light.position - fragPos);
+        float distance = length(light.position - fragPos);
+
+        // Calcul de l'occlusion
+        float occlusion = calculateOcclusion(lightDir, normal, distance);
 
         // Diffuse
         float diff = max(dot(normal, lightDir), 0.0);
@@ -124,11 +147,11 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, v
         vec3 specular = light.specular * material.specular * spec;
 
         // Attenuation
-        float distance = length(light.position - fragPos);
         float attenuation = 1.0 / (light.constant + light.linear * distance + light.exponant * (distance * distance));
 
-        diffuse *= attenuation;
-        specular *= attenuation;
+        // Appliquer l'occlusion
+        diffuse *= attenuation * occlusion;
+        specular *= attenuation * occlusion;
 
         return diffuse + specular;
 }
@@ -136,10 +159,14 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, v
 vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor) {
         vec3 lightDir = normalize(light.position - fragPos);
         vec3 spotDir = normalize(light.direction);
+        float distance = length(light.position - fragPos);
 
         // Calculate spotlight intensity
         float cosDir = dot(-lightDir, spotDir);
         float spotIntensity = smoothstep(light.cosOuterCone, light.cosInnerCone, cosDir);
+
+        // Calcul de l'occlusion
+        float occlusion = calculateOcclusion(lightDir, normal, distance);
 
         // Ambient (minimal, not affected by spotlight cone)
         vec3 ambient = light.ambient * material.ambient * texColor;
@@ -154,11 +181,11 @@ vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec
         vec3 specular = light.specular * material.specular * spec;
 
         // Attenuation
-        float distance = length(light.position - fragPos);
         float attenuation = 1.0 / (light.constant + light.linear * distance + light.exponant * (distance * distance));
 
-        diffuse *= attenuation * spotIntensity;
-        specular *= attenuation * spotIntensity;
+        // Appliquer l'occlusion et l'intensité du spot
+        diffuse *= attenuation * spotIntensity * occlusion;
+        specular *= attenuation * spotIntensity * occlusion;
 
         return ambient + diffuse + specular;
 }
