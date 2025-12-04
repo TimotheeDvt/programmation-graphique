@@ -2,7 +2,7 @@
 #include <filesystem>
 #include "src/Application.h"
 
-const char* APP_TITLE = "Minecraft Clone - OpenGL Demo";
+const char* APP_TITLE = "Minecraft Clone - OpenGL Demo - Timothée Dravet";
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 

@@ -133,14 +133,18 @@ void Renderer::render(const FPSCamera& camera, const World& world, const Scene& 
         if (pointLights.size() >= MAX_POINT_LIGHTS) break;
         pointLights.push_back(CreateTorchLight(pos));
     }
-    for (const auto& modelData : scene.models) {
+    for (const auto& modelData : scene.models) { // No change needed here, range-based for loop works on both
         if (spotLights.size() >= MAX_SPOT_LIGHTS) break;
-        // This could be improved to handle model rotation
-        glm::vec3 lookDirection = glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f));
-        glm::vec3 eyeLightPos1 = modelData.position + glm::vec3(0.1f, 2.75f, 0.4f);
+
+        glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+        glm::vec3 lookDirection = glm::normalize(glm::vec3(rotationMatrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+
+        glm::vec3 eyeOffset1 = glm::vec3(rotationMatrix * glm::vec4(0.1f, 2.75f, 0.4f, 1.0f));
+        glm::vec3 eyeLightPos1 = modelData.position + eyeOffset1;
         spotLights.push_back(CreateEndermanLight(eyeLightPos1, lookDirection));
         if (spotLights.size() >= MAX_SPOT_LIGHTS) break;
-        glm::vec3 eyeLightPos2 = modelData.position + glm::vec3(-0.1f, 2.75f, 0.45f);
+        glm::vec3 eyeOffset2 = glm::vec3(rotationMatrix * glm::vec4(-0.1f, 2.75f, 0.45f, 1.0f));
+        glm::vec3 eyeLightPos2 = modelData.position + eyeOffset2;
         spotLights.push_back(CreateEndermanLight(eyeLightPos2, lookDirection));
     }
 
@@ -159,7 +163,7 @@ void Renderer::renderScene(ShaderProgram& shader, const World& world, const Scen
     shader.setUniform("model", model);
     world.draw();
 
-    for (const auto& modelData : scene.models) {
+    for (const auto& modelData : scene.models) { // No change needed here
         if (meshCache.count(modelData.meshFile)) {
             Mesh* mesh = meshCache.at(modelData.meshFile).get();
             glm::mat4 modelMatrix = glm::mat4(1.0f);
@@ -345,7 +349,7 @@ void Renderer::mainRenderPass(const FPSCamera& camera, const World& world, const
     world.draw();
 
     // Draw models
-    for (const auto& modelData : scene.models) {
+    for (const auto& modelData : scene.models) { // No change needed here
         if (meshCache.count(modelData.meshFile)) {
             Mesh* mesh = meshCache.at(modelData.meshFile).get();
             Texture2D* texture = modelTextureCache.count(modelData.textureFile) ? modelTextureCache.at(modelData.textureFile).get() : nullptr;

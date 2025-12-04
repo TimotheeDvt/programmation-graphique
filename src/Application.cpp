@@ -117,22 +117,7 @@ void Application::init() {
 }
 
 void Application::initResources() {
-    m_world.generate(4);
-
-    for (const auto& modelData : m_scene.models) {
-        if (m_meshCache.find(modelData.meshFile) == m_meshCache.end()) {
-            auto mesh = std::make_unique<Mesh>();
-            if (mesh->loadObj(modelData.meshFile)) {
-                m_meshCache[modelData.meshFile] = std::move(mesh);
-            }
-        }
-        if (!modelData.textureFile.empty() && m_modelTextureCache.find(modelData.textureFile) == m_modelTextureCache.end()) {
-            auto texture = std::make_unique<Texture2D>();
-            if (texture->loadTexture(modelData.textureFile, true)) {
-                m_modelTextureCache[modelData.textureFile] = std::move(texture);
-            }
-        }
-    }
+    m_world.generate(4, -1);
 
     const auto& pathToIndex = Chunk::m_pathToTextureIndex;
     int numTexturesToBind = (int)pathToIndex.size();
@@ -149,7 +134,20 @@ void Application::initResources() {
         }
     }
 
-    std::cout << "World generated successfully!" << std::endl;
+    for (const auto& modelData : m_scene.models) {
+        if (m_meshCache.find(modelData.meshFile) == m_meshCache.end()) {
+            auto mesh = std::make_unique<Mesh>();
+            if (mesh->loadObj(modelData.meshFile)) {
+                m_meshCache[modelData.meshFile] = std::move(mesh);
+            }
+        }
+        if (!modelData.textureFile.empty() && m_modelTextureCache.find(modelData.textureFile) == m_modelTextureCache.end()) {
+            auto texture = std::make_unique<Texture2D>();
+            if (texture->loadTexture(modelData.textureFile, true)) {
+                m_modelTextureCache[modelData.textureFile] = std::move(texture);
+            }
+        }
+    }
 }
 
 void Application::mainLoop() {
@@ -221,6 +219,8 @@ void Application::update(double deltaTime) {
         m_camera.applyPhysics(m_world, deltaTime);
     }
 
+    updateEnderman(deltaTime);
+
     if (m_leftMouseButtonPressed || m_rightMouseButtonPressed) {
         RaycastHit hit = raycastWorld(m_world, m_camera.getPosition(), glm::normalize(m_camera.getLook()), 16.0f);
         if (hit.hit) {
@@ -240,6 +240,40 @@ void Application::update(double deltaTime) {
     m_rightMouseButtonPressed = false;
 
     showFPS();
+}
+
+void Application::updateEnderman(double deltaTime) {
+    m_endermanTeleportTimer += deltaTime;
+
+    if (m_endermanTeleportTimer >= m_nextEndermanTeleportTime) {
+        m_endermanTeleportTimer = 0.0;
+        // Set next teleport time to a random value between 5 and 15 seconds
+        m_nextEndermanTeleportTime = 5.0 + (rand() / (RAND_MAX / 10.0));
+
+        // Find a random position to teleport to
+        const auto& chunks = m_world.getChunks();
+        if (chunks.empty()) return;
+
+        Chunk* randomChunk = chunks[rand() % chunks.size()];
+        glm::vec3 chunkPos = randomChunk->getWorldPosition();
+
+        int localX = rand() % Chunk::CHUNK_SIZE;
+        int localZ = rand() % Chunk::CHUNK_SIZE;
+
+        // Find the ground level at this (x, z)
+        for (int y = Chunk::CHUNK_HEIGHT - 1; y >= 0; --y) {
+            BlockType block = randomChunk->getBlock(localX, y, localZ);
+            BlockType blockAbove = randomChunk->getBlock(localX, y + 1, localZ);
+            BlockType blockTwoAbove = randomChunk->getBlock(localX, y + 2, localZ);
+
+            if (block != BlockType::AIR && blockAbove == BlockType::AIR && blockTwoAbove == BlockType::AIR && block != BlockType::LEAVES) {
+                // Update the model within the scene, not the global one
+                m_scene.models[0].position = chunkPos + glm::vec3(localX + 0.5f, y + 0.5f, localZ + 0.5f);
+                std::cout << "Enderman teleported to (" << endermanModel.position.x << ", " << endermanModel.position.y << ", " << endermanModel.position.z << ")" << std::endl;
+                return; // Found a spot
+            }
+        }
+    }
 }
 
 void Application::render() {

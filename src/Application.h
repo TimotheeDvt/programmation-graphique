@@ -48,6 +48,11 @@ private:
     // Timing
     double m_lastTime = 0.0;
 
+    // Enderman
+    double m_endermanTeleportTimer = 0.0;
+    double m_nextEndermanTeleportTime = 5.0;
+    void updateEnderman(double deltaTime);
+
     // Scene
     FPSCamera m_camera;
     World m_world;

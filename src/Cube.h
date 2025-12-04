@@ -65,7 +65,7 @@ public:
 	Chunk(int chunkX, int chunkZ);
 	~Chunk();
 
-	void generate();
+	void generate(long long worldSeed);
 	void buildMesh();
 	void draw();
 
@@ -111,7 +111,7 @@ public:
 	World();
 	~World();
 
-	void generate(int renderDistance = 3);
+	void generate(int renderDistance = 3, long long seed = -1);
 	void draw() const;
 
 	const std::vector<Chunk*>& getChunks() const { return mChunks; }
@@ -130,6 +130,7 @@ public:
 	) const;
 
 private:
+	long long m_seed;
 	std::vector<Chunk*> mChunks;
 
 	Chunk* getChunkAt(int x, int z);

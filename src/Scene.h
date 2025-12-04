@@ -5,17 +5,18 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include "Model.h"
+#include <vector>
 
 extern Model endermanModel;
 
 class Scene {
 public:
-    Scene() = default;
+    Scene() {
+        models.push_back(endermanModel);
+    }
     ~Scene() = default;
 
-    Model models[1] = {
-        endermanModel
-    };
+    std::vector<Model> models;
 };
 
 #endif // SCENE_H

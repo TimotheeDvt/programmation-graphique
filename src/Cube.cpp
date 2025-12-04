@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cmath>
 #include <random>
+#include <chrono>
 
 std::vector<CubeVertex> Cube::vertices;
 std::vector<unsigned int> Cube::indices;
@@ -146,8 +147,10 @@ Chunk::~Chunk() {
         glDeleteBuffers(1, &mVBO);
 }
 
-void Chunk::generate() {
-        std::mt19937 rng(mChunkX * 928371 + mChunkZ * 1231237);
+void Chunk::generate(long long worldSeed) {
+        // Combine world seed with chunk position for a unique, deterministic chunk seed
+        long long chunkSeed = worldSeed + mChunkX * 928371 + mChunkZ * 1231237;
+        std::mt19937 rng(chunkSeed);
         std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -636,10 +639,23 @@ World::~World() {
         mChunks.clear();
 }
 
-void World::generate(int renderDistance) {
+void World::generate(int renderDistance, long long seed) {
+        if (seed == -1) {
+                m_seed = std::chrono::system_clock::now().time_since_epoch().count();
+        } else {
+                m_seed = seed;
+        }
+        std::cout << "World generated with seed: " << m_seed << std::endl;
+
+        // Clear old chunks if any
+        for (auto chunk : mChunks) {
+                delete chunk;
+        }
+        mChunks.clear();
+
         if (renderDistance == 1) {
                 Chunk* chunk = new Chunk(0, 0);
-                chunk->generate();
+                chunk->generate(m_seed);
                 chunk->buildMesh();
                 mChunks.push_back(chunk);
                 return;
@@ -648,7 +664,7 @@ void World::generate(int renderDistance) {
         for (int x = -renderDistance; x <= renderDistance; x++) {
                 for (int z = -renderDistance; z <= renderDistance; z++) {
                         Chunk* chunk = new Chunk(x, z);
-                        chunk->generate();
+                        chunk->generate(m_seed);
                         chunk->buildMesh();
                         mChunks.push_back(chunk);
                 }
