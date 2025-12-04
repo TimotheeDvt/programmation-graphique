@@ -18,7 +18,8 @@
 #include "./src/Scene.h"
 
 #define MAX_BLOCK_TEXTURES 16
-#define MAX_POINT_LIGHTS 256
+#define MAX_POINT_LIGHTS 32
+#define MAX_SPOT_LIGHTS 8
 Texture2D gBlockTextures[MAX_BLOCK_TEXTURES];
 
 Scene scene; // Déclaration de l'instance de la scène
@@ -157,6 +158,7 @@ int main() {
 
                 // === ÉTAPE 1: Préparer TOUTES les lumières AVANT le rendu ===
                 frameLights.clear();
+                std::vector<std::pair<glm::vec3, glm::vec3>> spotLights; // position, direction
 
                 // Ajouter les lumières redstone
                 for (const auto& pos : redstoneLights) {
@@ -172,14 +174,17 @@ int main() {
                 }
                 int worldLightCount = frameLights.size();
 
-                // Ajouter les lumières des modèles (Enderman)
+                // Ajouter les spotlights des modèles (Enderman)
                 for (const auto& modelData : scene.models) {
-                        if (frameLights.size() >= MAX_POINT_LIGHTS) break;
-                        // Position de la lumière des yeux (ajuster selon votre modèle)
-                        glm::vec3 eyeLightPos = modelData.position + glm::vec3(0.0f, 2.8f, 0.3f);
-                        frameLights.push_back(eyeLightPos);
+                        if (spotLights.size() >= MAX_SPOT_LIGHTS) break;
+                        // Direction du regard (vers l'avant du modèle)
+                        glm::vec3 lookDirection = glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f));
+                        // Position des yeux
+                        glm::vec3 eyeLightPos = modelData.position + glm::vec3(0.1f, 2.75f, 0.4f);
+                        spotLights.push_back({eyeLightPos, lookDirection});
+                        eyeLightPos = modelData.position + glm::vec3(-0.1f, 2.75f, 0.45f);
+                        spotLights.push_back({eyeLightPos, lookDirection});
                 }
-                int totalLightCount = frameLights.size();
 
                 showFPS(gWindow);
 
@@ -214,10 +219,10 @@ int main() {
                 minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
                 minecraftShader.setUniform("dirLight.specular", glm::vec3(0.3f, 0.3f, 0.3f)*0.5f);
 
-                // === ÉTAPE 2: Configurer TOUTES les lumières dans le shader ===
-                minecraftShader.setUniform("numPointLights", totalLightCount);
+                // === ÉTAPE 2: Configurer les point lights ===
+                minecraftShader.setUniform("numPointLights", worldLightCount);
 
-                for (int i = 0; i < totalLightCount; i++) {
+                for (int i = 0; i < worldLightCount; i++) {
                         std::string base = "pointLights[" + std::to_string(i) + "]";
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
@@ -230,7 +235,7 @@ int main() {
                                 minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
                                 minecraftShader.setUniform((base + ".exponant").c_str(), 0.07f);
                         }
-                        else if (i < worldLightCount) {
+                        else {
                                 // Torch Light
                                 minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.1f, 0.08f, 0.02f));
                                 minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.8f, 0.2f));
@@ -238,17 +243,32 @@ int main() {
                                 minecraftShader.setUniform((base + ".linear").c_str(), 0.22f);
                                 minecraftShader.setUniform((base + ".exponant").c_str(), 0.20f);
                         }
-                        else {
-                                // Model Eye Light (Enderman)
-                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.05f, 0.0f, 0.05f)*5.0f);
-                                minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f)*5.0f);
-                                minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.f, 0.0f, 0.4f)*5.0f);
-                                minecraftShader.setUniform((base + ".linear").c_str(), 0.35f);
-                                minecraftShader.setUniform((base + ".exponant").c_str(), 0.44f);
-                        }
                 }
 
-                // === ÉTAPE 3: Configurer les matériaux ===
+                // === ÉTAPE 3: Configurer les spotlights (Enderman eyes) ===
+                minecraftShader.setUniform("numSpotLights", (int)spotLights.size());
+
+                for (int i = 0; i < spotLights.size(); i++) {
+                        std::string base = "spotLights[" + std::to_string(i) + "]";
+                        minecraftShader.setUniform((base + ".position").c_str(), spotLights[i].first);
+                        minecraftShader.setUniform((base + ".direction").c_str(), spotLights[i].second);
+
+                        // Spotlight properties
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.05f, 0.0f, 0.05f) * 2.0f);
+                        minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f) * 8.0f);
+                        minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.6f, 0.0f, 0.6f) * 8.0f);
+
+                        // Attenuation
+                        minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
+                        minecraftShader.setUniform((base + ".linear").c_str(), 0.09f);
+                        minecraftShader.setUniform((base + ".exponant").c_str(), 0.032f);
+
+                        // Spotlight cone angles
+                        minecraftShader.setUniform((base + ".cosInnerCone").c_str(), glm::cos(glm::radians(12.5f)));
+                        minecraftShader.setUniform((base + ".cosOuterCone").c_str(), glm::cos(glm::radians(25.0f)));
+                }
+
+                // === ÉTAPE 4: Configurer les matériaux ===
                 minecraftShader.setUniform("material.ambient", glm::vec3(1.0f, 1.0f, 1.0f));
                 minecraftShader.setUniformSampler("material.diffuseMap", 0);
                 minecraftShader.setUniform("material.specular", glm::vec3(0.1f, 0.1f, 0.1f));
@@ -260,16 +280,15 @@ int main() {
                         minecraftShader.setUniformSampler(samplerName.c_str(), i);
                 }
 
-                // === ÉTAPE 4: Dessiner le monde ===
+                // === ÉTAPE 5: Dessiner le monde ===
                 world.draw();
 
-                // === ÉTAPE 5: Dessiner les modèles ===
+                // === ÉTAPE 6: Dessiner les modèles ===
                 for (const auto& modelData : scene.models) {
                         Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
                         Texture2D* texture = modelTextureCache.count(modelData.textureFile) ? modelTextureCache.at(modelData.textureFile) : nullptr;
 
                         if (mesh) {
-                                // Calculer la matrice de transformation du modèle
                                 glm::mat4 modelMatrix = glm::mat4(1.0f);
                                 modelMatrix = glm::translate(modelMatrix, modelData.position);
                                 modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
@@ -277,13 +296,11 @@ int main() {
 
                                 minecraftShader.setUniform("model", modelMatrix);
 
-                                // Lier la texture du modèle
                                 if (texture) {
                                         texture->bind(0);
                                         minecraftShader.setUniformSampler("material.diffuseMap", 0);
                                 }
 
-                                // Dessiner le modèle
                                 mesh->draw();
 
                                 if (texture) {
