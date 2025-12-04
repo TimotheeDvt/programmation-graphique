@@ -68,6 +68,46 @@ ShaderProgram* debugLineShader = nullptr;
 GLuint debugPointVAO = 0;
 GLuint debugPointVBO = 0;
 
+const unsigned int SHADOW_WIDTH = 4096;
+const unsigned int SHADOW_HEIGHT = 4096;
+GLuint gShadowMapFBO;
+GLuint gShadowMap;
+ShaderProgram* shadowShader = nullptr;
+
+bool initShadows() {
+    // 1. Créer le FBO
+    glGenFramebuffers(1, &gShadowMapFBO);
+
+    // 2. Créer la texture de profondeur (Shadow Map)
+    glGenTextures(1, &gShadowMap);
+    glBindTexture(GL_TEXTURE_2D, gShadowMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, 
+                 SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    // Paramètres pour la gestion des bords et du filtrage
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // Couleur blanche pour les zones hors champ
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    // 3. Attacher la texture de profondeur au FBO
+    glBindFramebuffer(GL_FRAMEBUFFER, gShadowMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gShadowMap, 0);
+
+    // 4. Configurer le FBO pour ne pas avoir de sortie couleur
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Framebuffer not complete!" << std::endl;
+        return false;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+}
+
 int main() {
         std::cout << "CWD: " << std::filesystem::current_path() << std::endl;
 
@@ -76,6 +116,11 @@ int main() {
                 return -1;
         }
         initCrosshair();
+
+        if(!initShadows()) { // AJOUTÉ: Initialisation des ombres
+                std::cerr << "Shadow initialization failed" << std::endl;
+                return -1;
+        }
 
         if (blueDebug) {
                 debugLineShader = new ShaderProgram();
@@ -97,6 +142,9 @@ int main() {
                 glEnableVertexAttribArray(0);
                 glBindVertexArray(0);
         }
+
+        shadowShader = new ShaderProgram();
+        shadowShader->loadShaders("./shadow_dir.vert", "./shadow_dir.frag"); // AJOUTÉ
 
         ShaderProgram minecraftShader;
         minecraftShader.loadShaders("./minecraft.vert", "./minecraft.frag");
@@ -152,6 +200,8 @@ int main() {
 
         double lastTime = glfwGetTime();
 
+        glm::mat4 lightSpaceMatrix;
+
         while (!glfwWindowShouldClose(gWindow)) {
                 std::vector<glm::vec3> redstoneLights = world.getRedstoneLightPositions();
                 std::vector<glm::vec3> torchLights = world.getTorchLightPositions();
@@ -163,14 +213,14 @@ int main() {
                 // Ajouter les lumières redstone
                 for (const auto& pos : redstoneLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
-                        frameLights.push_back(pos);
+                                frameLights.push_back(pos);
                 }
                 int redstoneLightCount = frameLights.size();
 
                 // Ajouter les lumières torches
                 for (const auto& pos : torchLights) {
                         if (frameLights.size() >= MAX_POINT_LIGHTS) break;
-                        frameLights.push_back(pos);
+                                frameLights.push_back(pos);
                 }
                 int worldLightCount = frameLights.size();
 
@@ -194,9 +244,55 @@ int main() {
                 glfwPollEvents();
                 update(deltaTime);
 
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                // --- PASS 1: Rendu de la carte de profondeur (Shadow Map) ---
+                glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
+                float near_plane = 1.0f, far_plane = 70.0f;
+                // Crée une matrice de projection orthographique pour la lumière
+                glm::mat4 lightProjection = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, near_plane, far_plane);
+
+                // Crée une matrice de vue de la lumière, centrée sur la caméra du joueur
+                glm::vec3 centerPos = fpsCamera.getPosition();
+                glm::mat4 lightView = glm::lookAt(centerPos - sunDirection * 20.0f, // Position de la caméra de lumière
+                                                  centerPos,                         // Cible (centre du champ de vision)
+                                                  glm::vec3(0.0f, 1.0f, 0.0f));       // Up vector
+
+                lightSpaceMatrix = lightProjection * lightView;
+
+                glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+                glBindFramebuffer(GL_FRAMEBUFFER, gShadowMapFBO);
+                glClear(GL_DEPTH_BUFFER_BIT);
+                glCullFace(GL_FRONT); // Culling de face avant pour éviter le shadow acne
+
+                shadowShader->use();
+                shadowShader->setUniform("lightSpaceMatrix", lightSpaceMatrix);
 
                 glm::mat4 model = glm::mat4(1.0f);
+                // Rendu du monde
+                shadowShader->setUniform("model", model);
+                world.draw();
+
+                // Rendu des modèles dans le Shadow Map
+                for (const auto& modelData : scene.models) {
+                        Mesh* mesh = meshCache.count(modelData.meshFile) ? meshCache.at(modelData.meshFile) : nullptr;
+                        if (mesh) {
+                                glm::mat4 modelMatrix = glm::mat4(1.0f);
+                                modelMatrix = glm::translate(modelMatrix, modelData.position);
+                                modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+                                modelMatrix = glm::scale(modelMatrix, modelData.scale);
+
+                                shadowShader->setUniform("model", modelMatrix);
+                                mesh->draw();
+                        }
+                }
+
+                glCullFace(GL_BACK); // Retour au culling de face arrière par défaut
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+                // --- PASS 2: Rendu de la scène principale avec ombres ---
+                glViewport(0, 0, gWindowWidth, gWindowHeight);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
                 glm::mat4 view = fpsCamera.getViewMatrix();
 
                 float fov = fpsCamera.getFOV();
@@ -207,13 +303,19 @@ int main() {
 
                 minecraftShader.use();
 
+                model = glm::mat4(1.0f); // Re-initialisation du model matrix pour le monde
                 minecraftShader.setUniform("model", model);
                 minecraftShader.setUniform("view", view);
                 minecraftShader.setUniform("projection", projection);
                 minecraftShader.setUniform("viewPos", viewPos);
 
-                // Directional light (sun)
-                glm::vec3 sunDirection(-0.3f, -0.8f, -0.5f);
+                // Passer la matrice d'espace lumière et le Shadow Map (unité de texture 16)
+                minecraftShader.setUniform("lightSpaceMatrix", lightSpaceMatrix);
+                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES);
+                glBindTexture(GL_TEXTURE_2D, gShadowMap);
+                minecraftShader.setUniformSampler("shadowMap", MAX_BLOCK_TEXTURES);
+
+                // Directional light (sun) - Ambient est géré dans le shader principal
                 minecraftShader.setUniform("dirLight.direction", sunDirection);
                 minecraftShader.setUniform("dirLight.ambient", glm::vec3(0.3f, 0.3f, 0.35f)*0.2f);
                 minecraftShader.setUniform("dirLight.diffuse", glm::vec3(0.8f, 0.8f, 0.7f)*0.5f);
@@ -227,9 +329,11 @@ int main() {
                         minecraftShader.setUniform((base + ".position").c_str(), frameLights[i]);
                         minecraftShader.setUniform((base + ".constant").c_str(), 1.0f);
 
+                        // Ambient doit être 0 dans le C++ pour correspondre au shader sans occlusion
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f));
+
                         if (i < redstoneLightCount) {
                                 // Redstone Light
-                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.01f, 0.0f, 0.0f));
                                 minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.1f, 0.1f));
                                 minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.1f, 0.1f));
                                 minecraftShader.setUniform((base + ".linear").c_str(), 0.14f);
@@ -237,7 +341,6 @@ int main() {
                         }
                         else {
                                 // Torch Light
-                                minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.1f, 0.08f, 0.02f));
                                 minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(1.0f, 0.8f, 0.2f));
                                 minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.5f, 0.4f, 0.1f));
                                 minecraftShader.setUniform((base + ".linear").c_str(), 0.22f);
@@ -254,7 +357,8 @@ int main() {
                         minecraftShader.setUniform((base + ".direction").c_str(), spotLights[i].second);
 
                         // Spotlight properties
-                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.05f, 0.0f, 0.05f) * 2.0f);
+                        // Ambient doit être 0 dans le C++ pour correspondre au shader sans occlusion
+                        minecraftShader.setUniform((base + ".ambient").c_str(), glm::vec3(0.0f)); 
                         minecraftShader.setUniform((base + ".diffuse").c_str(), glm::vec3(0.8f, 0.0f, 0.8f) * 8.0f);
                         minecraftShader.setUniform((base + ".specular").c_str(), glm::vec3(0.6f, 0.0f, 0.6f) * 8.0f);
 
@@ -309,12 +413,13 @@ int main() {
                         }
                 }
 
+                // Unbind textures and shadow map
                 for (int i = 0; i < numTexturesToBind; i++) {
                         gBlockTextures[i].unbind(i);
                 }
-                for (int i = 0; i < numTexturesToBind; i++) {
-                        gBlockTextures[i].unbind(i);
-                }
+                glActiveTexture(GL_TEXTURE0 + MAX_BLOCK_TEXTURES);
+                glBindTexture(GL_TEXTURE_2D, 0);
+
 
                 if (blueDebug) {
                         glm::vec3 origin = fpsCamera.getPosition();
@@ -386,6 +491,9 @@ int main() {
                 delete pair.second;
         }
 
+        glDeleteFramebuffers(1, &gShadowMapFBO);
+        glDeleteTextures(1, &gShadowMap);
+        delete shadowShader; // AJOUTÉ
         cleanupCrosshair();
         glfwTerminate();
         return 0;
