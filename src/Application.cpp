@@ -5,6 +5,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "Light.h"
 #include "Constants.h"
+#include "Chunk.h"
+#include "Block.h"
+#include "World.h"
 
 namespace {
     const double ZOOM_SENSITIVITY = -3.0;
@@ -269,7 +272,6 @@ void Application::updateEnderman(double deltaTime) {
             if (block != BlockType::AIR && blockAbove == BlockType::AIR && blockTwoAbove == BlockType::AIR && block != BlockType::LEAVES) {
                 // Update the model within the scene, not the global one
                 m_scene.models[0].position = chunkPos + glm::vec3(localX + 0.5f, y + 0.5f, localZ + 0.5f);
-                std::cout << "Enderman teleported to (" << endermanModel.position.x << ", " << endermanModel.position.y << ", " << endermanModel.position.z << ")" << std::endl;
                 return; // Found a spot
             }
         }

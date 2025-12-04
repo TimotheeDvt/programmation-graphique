@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include "Constants.h"
+#include "Chunk.h"
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
 

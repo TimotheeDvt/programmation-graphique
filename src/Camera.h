@@ -3,6 +3,7 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/constants.hpp"
 #include "Cube.h"
+#include "World.h"
 
 class Camera {
     public:

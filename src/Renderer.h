@@ -8,7 +8,7 @@
 
 #include "ShaderProgram.h"
 #include "Camera.h"
-#include "Cube.h"
+#include "World.h"
 #include "Scene.h"
 #include "Mesh.h"
 #include "Texture2D.h"

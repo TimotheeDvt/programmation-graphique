@@ -4,7 +4,7 @@
 #include <glm/glm.hpp>
 #include "ShaderProgram.h"
 #include "Camera.h"
-#include "Cube.h"
+#include "Block.h"
 
 class DebugDrawer {
 public:

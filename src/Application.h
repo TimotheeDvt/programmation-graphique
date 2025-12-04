@@ -10,7 +10,8 @@
 
 #include "Camera.h"
 #include "Scene.h"
-#include "Cube.h"
+#include "World.h"
+#include "Block.h"
 #include "Renderer.h"
 #include "DebugDrawer.h"
 #include "Texture2D.h"
