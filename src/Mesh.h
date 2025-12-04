@@ -58,6 +58,9 @@ class Mesh {
                 const std::map<std::string, Material>& getMaterials() const;
                 const Material* getMaterial(const std::string& name) const;
 
+                glm::vec3 min = glm::vec3(std::numeric_limits<float>::max());
+                glm::vec3 max = glm::vec3(std::numeric_limits<float>::lowest());
+
         private:
                 void initBuffers();
 

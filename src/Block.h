@@ -31,7 +31,8 @@ struct CubeVertex {
 };
 
 struct RaycastHit {
-    bool hit;
+    bool hit = false;
+    bool isModel = false;
     glm::vec3 blockPos;
     glm::vec3 hitPos;
     glm::vec3 normal;

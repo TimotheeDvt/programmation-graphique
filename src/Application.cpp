@@ -14,7 +14,26 @@ namespace {
     float MOVE_SPEED = 30.0f;
     const float MOUSE_SENSITIVITY = 0.1f;
 
-    RaycastHit raycastWorld(const World& world, const glm::vec3& origin, const glm::vec3& dir, float maxDist, float step = 0.05f) {
+    bool rayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const glm::vec3& min, const glm::vec3& max, float& t) {
+        glm::vec3 invDir = 1.0f / rayDir;
+        glm::vec3 tMin = (min - rayOrigin) * invDir;
+        glm::vec3 tMax = (max - rayOrigin) * invDir;
+        glm::vec3 t1 = glm::min(tMin, tMax);
+        glm::vec3 t2 = glm::max(tMin, tMax);
+        float tNear = glm::max(glm::max(t1.x, t1.y), t1.z);
+        float tFar = glm::min(glm::min(t2.x, t2.y), t2.z);
+
+        if (tNear > tFar || tFar < 0.0f) {
+            return false;
+        }
+
+        t = tNear < 0.0f ? tFar : tNear;
+        return true;
+    }
+
+
+    RaycastHit raycastWorld(const World& world, const Scene& scene, const std::map<std::string, std::unique_ptr<Mesh>>& meshCache,
+                            const glm::vec3& origin, const glm::vec3& dir, float maxDist, float step = 0.05f) {
         RaycastHit hit;
         hit.hit = false;
 
@@ -23,6 +42,49 @@ namespace {
         float t = 0.0f;
         glm::ivec3 previousVoxel = glm::floor(origin + glm::vec3(0.5f));
 
+        // Check for model intersection first
+        float closestModelHit = maxDist;
+        for (const auto& modelData : scene.models) {
+            if (meshCache.count(modelData.meshFile)) {
+                const auto& mesh = meshCache.at(modelData.meshFile);
+
+                // Create the model's transformation matrix
+                glm::mat4 modelMatrix = glm::mat4(1.0f);
+                modelMatrix = glm::translate(modelMatrix, modelData.position);
+                modelMatrix = glm::rotate(modelMatrix, glm::radians(modelData.rotation.angle), modelData.rotation.axis);
+                modelMatrix = glm::scale(modelMatrix, modelData.scale);
+
+                // Get the 8 corners of the mesh's local AABB
+                glm::vec3 localMin = mesh->min;
+                glm::vec3 localMax = mesh->max;
+                glm::vec3 corners[8] = {
+                    glm::vec3(localMin.x, localMin.y, localMin.z), glm::vec3(localMax.x, localMin.y, localMin.z),
+                    glm::vec3(localMin.x, localMax.y, localMin.z), glm::vec3(localMax.x, localMax.y, localMin.z),
+                    glm::vec3(localMin.x, localMin.y, localMax.z), glm::vec3(localMax.x, localMin.y, localMax.z),
+                    glm::vec3(localMin.x, localMax.y, localMax.z), glm::vec3(localMax.x, localMax.y, localMax.z)
+                };
+
+                // Transform corners and find the new world-space AABB
+                glm::vec3 worldMin(std::numeric_limits<float>::max());
+                glm::vec3 worldMax(std::numeric_limits<float>::lowest());
+                for (int i = 0; i < 8; ++i) {
+                    glm::vec3 transformedCorner = glm::vec3(modelMatrix * glm::vec4(corners[i], 1.0f));
+                    worldMin = glm::min(worldMin, transformedCorner);
+                    worldMax = glm::max(worldMax, transformedCorner);
+                }
+
+                float t_model = 0.0f;
+                if (rayIntersectsAABB(origin, dir, worldMin, worldMax, t_model) && t_model < closestModelHit) {
+                    hit.hit = true;
+                    hit.isModel = true;
+                    hit.hitPos = origin + dir * t_model;
+                    // For models, blockPos and normal might not be relevant in the same way.
+                    // We can leave them default or set them to something meaningful if needed.
+                    closestModelHit = t_model;
+                }
+            }
+        }
+
         while (t <= maxDist) {
             t += step;
             glm::vec3 pos = origin + dir * t;
@@ -30,6 +92,11 @@ namespace {
 
             if (voxel != previousVoxel) {
                 if (world.getBlockAt(glm::vec3(voxel)) != BlockType::AIR) {
+                    // If we hit a block closer than the model, this is our hit.
+                    if (t >= closestModelHit) {
+                        return hit; // The model hit was closer
+                    }
+
                     hit.hit = true;
                     hit.blockPos = glm::vec3(voxel);
                     hit.hitPos = pos;
@@ -120,7 +187,7 @@ void Application::init() {
 }
 
 void Application::initResources() {
-    m_world.generate(4, -1);
+    m_world.generate(1, -1);
 
     const auto& pathToIndex = Chunk::m_pathToTextureIndex;
     int numTexturesToBind = (int)pathToIndex.size();
@@ -225,16 +292,18 @@ void Application::update(double deltaTime) {
     updateEnderman(deltaTime);
 
     if (m_leftMouseButtonPressed || m_rightMouseButtonPressed) {
-        RaycastHit hit = raycastWorld(m_world, m_camera.getPosition(), glm::normalize(m_camera.getLook()), 16.0f);
+        RaycastHit hit = raycastWorld(m_world, m_scene, m_meshCache, m_camera.getPosition(), glm::normalize(m_camera.getLook()), 16.0f);
         if (hit.hit) {
-            if (m_leftMouseButtonPressed) {
-                m_world.setBlockAt(hit.blockPos, BlockType::AIR);
-            } else if (m_rightMouseButtonPressed) {
-                glm::vec3 placePos = hit.blockPos + hit.normal;
-                if (glm::length(placePos - m_camera.getPosition()) < 1.2f) {
-                    std::cout << "Too close to player, can't place block" << std::endl;
-                } else {
-                    m_world.setBlockAt(placePos, m_selectedBlock);
+            if (!hit.isModel) {
+                if (m_leftMouseButtonPressed) {
+                    m_world.setBlockAt(hit.blockPos, BlockType::AIR);
+                } else if (m_rightMouseButtonPressed) {
+                    glm::vec3 placePos = hit.blockPos + hit.normal;
+                    if (glm::length(placePos - m_camera.getPosition()) < 1.2f) {
+                        std::cout << "Too close to player, can't place block" << std::endl;
+                    } else {
+                        m_world.setBlockAt(placePos, m_selectedBlock);
+                    }
                 }
             }
         }
@@ -282,7 +351,7 @@ void Application::render() {
     m_renderer->render(m_camera, m_world, m_scene, m_meshCache, m_modelTextureCache, m_blockTextures.get(), m_width, m_height);
 
     if (m_debug) {
-        RaycastHit hit = raycastWorld(m_world, m_camera.getPosition(), glm::normalize(m_camera.getLook()), 16.0f);
+        RaycastHit hit = raycastWorld(m_world, m_scene, m_meshCache, m_camera.getPosition(), glm::normalize(m_camera.getLook()), 16.0f);
         m_debugDrawer->drawRaycast(m_camera, hit, m_width, m_height);
     }
 
