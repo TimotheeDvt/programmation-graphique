@@ -468,7 +468,7 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
     glDisable(GL_CULL_FACE);
 
     float iconSize = 64.0f;
-    float padding = 8.0f;
+    float padding = 10.0f;
     float barWidth = selectableBlocks.size() * iconSize + (selectableBlocks.size() + 1) * padding;
     float startX = (windowWidth - barWidth) / 2.0f;
     float startY = padding;
@@ -489,6 +489,17 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
         float currentY = startY;
 
         if ((int)i == selectedIndex) {
+            glm::mat4 frameModel = glm::mat4(1.0f);
+            frameModel = glm::translate(frameModel, glm::vec3(currentX + frameOffset, currentY + frameOffset, 0.0f));
+            frameModel = glm::scale(frameModel, glm::vec3(frameSize, frameSize, 1.0f));
+            m_guiShader->setUniform("model", frameModel);
+
+            blockTextures[safeTextureIndex+1].bind(0);
+            m_guiShader->setUniformSampler("guiTexture", 0);
+            m_guiShader->setUniform("tintColor", glm::vec3(1.0f, 1.0f, 1.0f)); // Cadre purement blanc
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            blockTextures[safeTextureIndex+1].unbind(0);
+        } else {
             glm::mat4 frameModel = glm::mat4(1.0f);
             frameModel = glm::translate(frameModel, glm::vec3(currentX + frameOffset, currentY + frameOffset, 0.0f));
             frameModel = glm::scale(frameModel, glm::vec3(frameSize, frameSize, 1.0f));

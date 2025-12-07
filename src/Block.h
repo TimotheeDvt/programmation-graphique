@@ -15,7 +15,8 @@ enum class BlockType {
 	LEAVES,
 	TORCH,
 	GLASS,
-	SELECTOR
+	HUD,
+	HUD_SELECTED,
 };
 
 struct BlockTexturePaths {

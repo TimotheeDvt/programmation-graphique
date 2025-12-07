@@ -203,11 +203,18 @@ void Chunk::initializeTextureConfig() {
                 ""
         };
 
-        m_textureConfig[BlockType::SELECTOR] = {
+        m_textureConfig[BlockType::HUD] = {
                 "",
                 "",
                 "",
-                "./textures/selector.png"
+                "./textures/hud1.png"
+        };
+
+        m_textureConfig[BlockType::HUD_SELECTED] = {
+                "",
+                "",
+                "",
+                "./textures/hud2.png"
         };
 
         for (const auto& pair : m_textureConfig) {
