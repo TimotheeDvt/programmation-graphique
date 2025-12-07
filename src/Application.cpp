@@ -268,13 +268,13 @@ void Application::processInput(double deltaTime) {
     );
     glfwSetCursorPos(m_window, m_width / 2.0, m_height / 2.0);
 
-    float physicsMoveSpeed = 5.0f;
+    float physicsMoveSpeed = 1.0f;
     if (glfwGetKey(m_window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {
         MOVE_SPEED = 80.0f;
-        physicsMoveSpeed = 10.0f;
+        physicsMoveSpeed = 2.0f;
     } else {
         MOVE_SPEED = 20.0f;
-        physicsMoveSpeed = 5.0f;
+        physicsMoveSpeed = 1.0f;
     }
 
     if (m_isFlying) {
