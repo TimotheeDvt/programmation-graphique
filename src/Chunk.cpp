@@ -203,6 +203,13 @@ void Chunk::initializeTextureConfig() {
                 ""
         };
 
+        m_textureConfig[BlockType::SELECTOR] = {
+                "",
+                "",
+                "",
+                "./textures/selector.png"
+        };
+
         for (const auto& pair : m_textureConfig) {
                 if (!pair.second.top.empty()) getIndex(pair.second.top);
                 if (!pair.second.bottom.empty()) getIndex(pair.second.bottom);

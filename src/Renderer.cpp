@@ -473,12 +473,33 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
     float startX = (windowWidth - barWidth) / 2.0f;
     float startY = padding;
 
+    float frameSize = iconSize + 10.0f;
+    float frameOffset = (iconSize - frameSize) / 2.0f;
+
+    int safeTextureIndex = 10;
+
     glBindVertexArray(m_guiVAO);
 
     const auto& pathToIndex = Chunk::m_pathToTextureIndex;
 
     for (size_t i = 0; i < selectableBlocks.size(); ++i) {
         BlockType type = selectableBlocks[i];
+
+        float currentX = startX + padding + i * (iconSize + padding);
+        float currentY = startY;
+
+        if ((int)i == selectedIndex) {
+            glm::mat4 frameModel = glm::mat4(1.0f);
+            frameModel = glm::translate(frameModel, glm::vec3(currentX + frameOffset, currentY + frameOffset, 0.0f));
+            frameModel = glm::scale(frameModel, glm::vec3(frameSize, frameSize, 1.0f));
+            m_guiShader->setUniform("model", frameModel);
+
+            blockTextures[safeTextureIndex].bind(0);
+            m_guiShader->setUniformSampler("guiTexture", 0);
+            m_guiShader->setUniform("tintColor", glm::vec3(1.0f, 1.0f, 1.0f)); // Cadre purement blanc
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            blockTextures[safeTextureIndex].unbind(0);
+        }
 
         std::string texturePath = "";
         if (Chunk::m_textureConfig.count(type)) {
@@ -495,20 +516,15 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
 
         if (textureIndex == -1 || textureIndex >= numTextures) continue;
 
-        float currentX = startX + padding + i * (iconSize + padding);
-        float currentY = startY;
-
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(currentX, currentY, 0.0f));
-        model = glm::scale(model, glm::vec3(iconSize, iconSize, 1.0f));
-        m_guiShader->setUniform("model", model);
+        glm::mat4 iconModel = glm::mat4(1.0f);
+        iconModel = glm::translate(iconModel, glm::vec3(currentX, currentY, 0.0f));
+        iconModel = glm::scale(iconModel, glm::vec3(iconSize, iconSize, 1.0f));
+        m_guiShader->setUniform("model", iconModel);
 
         blockTextures[textureIndex].bind(0);
         m_guiShader->setUniformSampler("guiTexture", 0);
 
-        // Couleur de teinte : Jaune pour le bloc sélectionné, Blanc sinon
-        glm::vec3 tintColor = ((int)i == selectedIndex) ? glm::vec3(1.0f, 1.0f, 0.0f) : glm::vec3(1.0f);
-        m_guiShader->setUniform("tintColor", tintColor);
+        m_guiShader->setUniform("tintColor", glm::vec3(1.0f));
 
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
