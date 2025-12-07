@@ -378,10 +378,10 @@ void addTorchMesh(std::vector<CubeVertex>& vertices, int chunkX, int chunkZ, int
     // --- 1. Face du Bas (-Y) ---
     glm::vec3 n_bottom(0.0f, -1.0f, 0.0f);
     addCubeFace(
-        glm::vec3(-0.40, Y_MIN,  0.05), // c0: xmin, ymax, zmax
-        glm::vec3( 0.40, Y_MIN,  0.05), // c1: xmax, ymax, zmax
-        glm::vec3( 0.40, Y_MIN, -0.10), // c2: xmax, ymax, zmin
-        glm::vec3(-0.40, Y_MIN, -0.10), // c3: xmin, ymax, zmin
+        glm::vec3(-0.40f, Y_MIN,  0.05f), // c0: xmin, ymax, zmax
+        glm::vec3( 0.40f, Y_MIN,  0.05f), // c1: xmax, ymax, zmax
+        glm::vec3( 0.40f, Y_MIN, -0.10f), // c2: xmax, ymax, zmin
+        glm::vec3(-0.40f, Y_MIN, -0.10f), // c3: xmin, ymax, zmin
         n_bottom
     );
 
@@ -389,10 +389,10 @@ void addTorchMesh(std::vector<CubeVertex>& vertices, int chunkX, int chunkZ, int
     glm::vec3 n_top(0.0f, 1.0f, 0.0f);
     // Ordre des coins inversé pour le sens d'enroulement (winding order) correct
     addCubeFace(
-        glm::vec3(-0.40, Y_MAX - 0.28,  0.05), // c0: xmin, ymax, zmax
-        glm::vec3( 0.40, Y_MAX - 0.28,  0.05), // c1: xmax, ymax, zmax
-        glm::vec3( 0.40, Y_MAX - 0.28, -0.10), // c2: xmax, ymax, zmin
-        glm::vec3(-0.40, Y_MAX - 0.28, -0.10), // c3: xmin, ymax, zmin
+        glm::vec3(-0.40f, Y_MAX - 0.28f,  0.05f), // c0: xmin, ymax, zmax
+        glm::vec3( 0.40f, Y_MAX - 0.28f,  0.05f), // c1: xmax, ymax, zmax
+        glm::vec3( 0.40f, Y_MAX - 0.28f, -0.10f), // c2: xmax, ymax, zmin
+        glm::vec3(-0.40f, Y_MAX - 0.28f, -0.10f), // c3: xmin, ymax, zmin
         n_top
     );
 
@@ -410,30 +410,30 @@ void addTorchMesh(std::vector<CubeVertex>& vertices, int chunkX, int chunkZ, int
     glm::vec3 n_back(0.0f, 0.0f, -1.0f);
     // Ordre des coins inversé pour le sens d'enroulement (winding order) correct
     addCubeFace(
-        glm::vec3( W_HALF, Y_MIN, -W_HALF + 0.35), // c0: xmax, ymin, zmin
-        glm::vec3(-W_HALF, Y_MIN, -W_HALF + 0.35), // c1: xmin, ymin, zmin
-        glm::vec3(-W_HALF, Y_MAX, -W_HALF + 0.35), // c2: xmin, ymax, zmin
-        glm::vec3( W_HALF, Y_MAX, -W_HALF + 0.35), // c3: xmax, ymax, zmin
+        glm::vec3( W_HALF, Y_MIN, -W_HALF + 0.35f), // c0: xmax, ymin, zmin
+        glm::vec3(-W_HALF, Y_MIN, -W_HALF + 0.35f), // c1: xmin, ymin, zmin
+        glm::vec3(-W_HALF, Y_MAX, -W_HALF + 0.35f), // c2: xmin, ymax, zmin
+        glm::vec3( W_HALF, Y_MAX, -W_HALF + 0.35f), // c3: xmax, ymax, zmin
         n_back
     );
 
     // --- 5. Face Droite (+X) ---
     glm::vec3 n_right(1.0f, 0.0f, 0.0f);
     addCubeFace(
-        glm::vec3( W_HALF - 0.35, Y_MIN,  W_HALF), // c0: xmax, ymin, zmax
-        glm::vec3( W_HALF - 0.35, Y_MIN, -W_HALF), // c1: xmax, ymin, zmin
-        glm::vec3( W_HALF - 0.35, Y_MAX, -W_HALF), // c2: xmax, ymax, zmin
-        glm::vec3( W_HALF - 0.35, Y_MAX,  W_HALF), // c3: xmax, ymax, zmax
+        glm::vec3( W_HALF - 0.35f, Y_MIN,  W_HALF), // c0: xmax, ymin, zmax
+        glm::vec3( W_HALF - 0.35f, Y_MIN, -W_HALF), // c1: xmax, ymin, zmin
+        glm::vec3( W_HALF - 0.35f, Y_MAX, -W_HALF), // c2: xmax, ymax, zmin
+        glm::vec3( W_HALF - 0.35f, Y_MAX,  W_HALF), // c3: xmax, ymax, zmax
         n_right
     );
 
     // --- 6. Face Gauche (-X) ---
     glm::vec3 n_left(-1.0f, 0.0f, 0.0f);
     addCubeFace(
-        glm::vec3(-W_HALF + 0.35, Y_MIN, -W_HALF), // c0: xmin, ymin, zmin
-        glm::vec3(-W_HALF + 0.35, Y_MIN,  W_HALF), // c1: xmin, ymin, zmax
-        glm::vec3(-W_HALF + 0.35, Y_MAX,  W_HALF), // c2: xmin, ymax, zmax
-        glm::vec3(-W_HALF + 0.35, Y_MAX, -W_HALF), // c3: xmin, ymax, zmin
+        glm::vec3(-W_HALF + 0.35f, Y_MIN, -W_HALF), // c0: xmin, ymin, zmin
+        glm::vec3(-W_HALF + 0.35f, Y_MIN,  W_HALF), // c1: xmin, ymin, zmax
+        glm::vec3(-W_HALF + 0.35f, Y_MAX,  W_HALF), // c2: xmin, ymax, zmax
+        glm::vec3(-W_HALF + 0.35f, Y_MAX, -W_HALF), // c3: xmin, ymax, zmin
         n_left
     );
 }

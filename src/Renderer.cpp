@@ -209,7 +209,7 @@ void Renderer::pointShadowPass(const std::vector<PointLight>& pointLights, const
     if (pointLights.empty()) return;
 
     glm::mat4 pointShadowProj = glm::perspective(glm::radians(90.0f), (float)POINT_SHADOW_WIDTH / (float)POINT_SHADOW_HEIGHT, POINT_NEAR_PLANE, POINT_FAR_PLANE);
-    
+
     glViewport(0, 0, POINT_SHADOW_WIDTH, POINT_SHADOW_HEIGHT);
     glBindFramebuffer(GL_FRAMEBUFFER, m_pointShadowMapFBO);
 
