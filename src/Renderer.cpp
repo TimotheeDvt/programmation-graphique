@@ -25,12 +25,15 @@ Renderer::~Renderer() {
 
     if (m_crosshairVAO) glDeleteVertexArrays(1, &m_crosshairVAO);
     if (m_crosshairVBO) glDeleteBuffers(1, &m_crosshairVBO);
+    if (m_guiVAO) glDeleteVertexArrays(1, &m_guiVAO);
+    if (m_guiVBO) glDeleteBuffers(1, &m_guiVBO);
 }
 
 void Renderer::init() {
     initShaders();
     initShadows();
     initCrosshair();
+    initGUIMesh();
 }
 
 void Renderer::initShaders() {
@@ -45,6 +48,9 @@ void Renderer::initShaders() {
 
     m_crosshairShader = std::make_unique<ShaderProgram>();
     m_crosshairShader->loadShaders("./crosshair.vert", "./crosshair.frag");
+
+    m_guiShader = std::make_unique<ShaderProgram>();
+    m_guiShader->loadShaders("./gui.vert", "./gui.frag");
 }
 
 void Renderer::initShadows() {
@@ -416,4 +422,102 @@ void Renderer::drawCrosshair(int windowWidth, int windowHeight) {
     glBindVertexArray(m_crosshairVAO);
     glDrawArrays(GL_LINES, 0, 8);
     glEnable(GL_DEPTH_TEST);
+}
+
+void Renderer::initGUIMesh() {
+    float quadVertices[] = {
+        // pos (x, y, z=0) // tex (u, v)
+        // Triangle 1
+        0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+        0.0f, 0.0f, 0.0f,   0.0f, 0.0f,
+        1.0f, 0.0f, 0.0f,   1.0f, 0.0f,
+        // Triangle 2
+        0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+        1.0f, 0.0f, 0.0f,   1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f,   1.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &m_guiVAO);
+    glGenBuffers(1, &m_guiVBO);
+    glBindVertexArray(m_guiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_guiVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+
+    glBindVertexArray(0);
+}
+
+void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures, int selectedIndex,
+                               const std::vector<BlockType>& selectableBlocks,
+                               int windowWidth, int windowHeight) {
+    if (m_guiVAO == 0 || selectableBlocks.empty()) return;
+
+    m_guiShader->use();
+
+    glm::mat4 ortho = glm::ortho(0.0f, (float)windowWidth, 0.0f, (float)windowHeight);
+    m_guiShader->setUniform("projection", ortho);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
+
+    float iconSize = 64.0f;
+    float padding = 8.0f;
+    float barWidth = selectableBlocks.size() * iconSize + (selectableBlocks.size() + 1) * padding;
+    float startX = (windowWidth - barWidth) / 2.0f;
+    float startY = padding;
+
+    glBindVertexArray(m_guiVAO);
+
+    const auto& pathToIndex = Chunk::m_pathToTextureIndex;
+
+    for (size_t i = 0; i < selectableBlocks.size(); ++i) {
+        BlockType type = selectableBlocks[i];
+
+        std::string texturePath = "";
+        if (Chunk::m_textureConfig.count(type)) {
+            const auto& config = Chunk::m_textureConfig.at(type);
+            texturePath = config.special.empty() ? config.top : config.special;
+        }
+
+        if (texturePath.empty()) continue;
+
+        int textureIndex = -1;
+        if (pathToIndex.count(texturePath)) {
+            textureIndex = pathToIndex.at(texturePath);
+        }
+
+        if (textureIndex == -1 || textureIndex >= numTextures) continue;
+
+        float currentX = startX + padding + i * (iconSize + padding);
+        float currentY = startY;
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(currentX, currentY, 0.0f));
+        model = glm::scale(model, glm::vec3(iconSize, iconSize, 1.0f));
+        m_guiShader->setUniform("model", model);
+
+        blockTextures[textureIndex].bind(0);
+        m_guiShader->setUniformSampler("guiTexture", 0);
+
+        // Couleur de teinte : Jaune pour le bloc sélectionné, Blanc sinon
+        glm::vec3 tintColor = ((int)i == selectedIndex) ? glm::vec3(1.0f, 1.0f, 0.0f) : glm::vec3(1.0f);
+        m_guiShader->setUniform("tintColor", tintColor);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        blockTextures[textureIndex].unbind(0);
+    }
+
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
 }

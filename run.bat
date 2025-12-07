@@ -4,17 +4,7 @@ del *.frag 2>nul
 del *.vert 2>nul
 
 REM Copy new shader files from shaders directory
-copy shaders\minecraft.frag
-copy shaders\minecraft.vert
-copy shaders\crosshair.frag
-copy shaders\crosshair.vert
-copy shaders\debug_line.frag
-copy shaders\debug_line.vert
-copy shaders\lighting_dir.frag
-copy shaders\lighting_dir.vert
-copy shaders\shadow_dir.frag
-copy shaders\shadow_dir.vert
-copy shaders\depth_point.frag
+copy shaders\*
 
 REM Build the project
 cmake --build build --config Release

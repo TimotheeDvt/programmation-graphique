@@ -28,10 +28,16 @@ public:
 
     void drawCrosshair(int windowWidth, int windowHeight);
 
+    void drawInventoryHUD(const Texture2D* blockTextures, int numTextures, int selectedIndex,
+                          const std::vector<BlockType>& selectableBlocks,
+                          int windowWidth, int windowHeight
+    );
+
 private:
     void initShaders();
     void initShadows();
     void initCrosshair();
+    void initGUIMesh();
 
     void renderScene(ShaderProgram& shader, const World& world, const Scene& scene, const std::map<std::string, std::unique_ptr<Mesh>>& meshCache);
 
@@ -52,6 +58,7 @@ private:
     std::unique_ptr<ShaderProgram> m_depthShader;
     std::unique_ptr<ShaderProgram> m_pointDepthShader;
     std::unique_ptr<ShaderProgram> m_crosshairShader;
+    std::unique_ptr<ShaderProgram> m_guiShader;
 
     // Shadow Maps
     GLuint m_dirShadowMapFBO = 0, m_dirShadowMap = 0;
@@ -64,6 +71,7 @@ private:
 
     // Crosshair
     GLuint m_crosshairVAO = 0, m_crosshairVBO = 0;
+    GLuint m_guiVAO = 0, m_guiVBO = 0;
 
     // Directional Light
     DirectionalLight m_dirLight;

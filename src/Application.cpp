@@ -204,6 +204,18 @@ void Application::initResources() {
         }
     }
 
+    m_selectableBlocks = {
+        BlockType::GRASS, // index 0 (ajouté pour la complétude)
+        BlockType::DIRT,  // index 1
+        BlockType::STONE, // index 2
+        BlockType::WOOD,  // index 3
+        BlockType::LEAVES, // index 4
+        BlockType::REDSTONE, // index 5
+        BlockType::TORCH, // index 6 (par défaut)
+        BlockType::GLASS  // index 7
+    };
+    m_selectedBlockIndex = 0;
+
     for (const auto& modelData : m_scene.models) {
         if (m_meshCache.find(modelData.meshFile) == m_meshCache.end()) {
             auto mesh = std::make_unique<Mesh>();
@@ -302,7 +314,7 @@ void Application::update(double deltaTime) {
                     if (glm::length(placePos - m_camera.getPosition()) < 1.2f) {
                         std::cout << "Too close to player, can't place block" << std::endl;
                     } else {
-                        m_world.setBlockAt(placePos, m_selectedBlock);
+                        m_world.setBlockAt(placePos, m_selectableBlocks[m_selectedBlockIndex]);
                     }
                 }
             }
@@ -355,12 +367,27 @@ void Application::render() {
         m_debugDrawer->drawRaycast(m_camera, hit, m_width, m_height);
     }
 
+    const auto& pathToIndex = Chunk::m_pathToTextureIndex;
+    int numTextures = (int)pathToIndex.size();
+
+    m_renderer->drawInventoryHUD(m_blockTextures.get(), numTextures, m_selectedBlockIndex,
+                                 m_selectableBlocks, m_width, m_height);
+
     m_renderer->drawCrosshair(m_width, m_height);
 }
 
 void Application::onKey(GLFWwindow* window, int key, int scancode, int action, int mode) {
     Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
     if (action != GLFW_PRESS) return;
+
+    auto setBlock = [&](BlockType type) {
+        for (size_t i = 0; i < app->m_selectableBlocks.size(); ++i) {
+            if (app->m_selectableBlocks[i] == type) {
+                app->m_selectedBlockIndex = (int)i;
+                break;
+            }
+        }
+    };
 
     switch (key) {
         case GLFW_KEY_ESCAPE: glfwSetWindowShouldClose(window, GL_TRUE); break;
@@ -369,13 +396,25 @@ void Application::onKey(GLFWwindow* window, int key, int scancode, int action, i
             glPolygonMode(GL_FRONT_AND_BACK, app->m_wireframe ? GL_LINE : GL_FILL);
             break;
         case GLFW_KEY_F2: app->m_debug = !app->m_debug; break;
-        case GLFW_KEY_2: app->m_selectedBlock = BlockType::REDSTONE; break;
-        case GLFW_KEY_3: app->m_selectedBlock = BlockType::DIRT; break;
-        case GLFW_KEY_4: app->m_selectedBlock = BlockType::STONE; break;
-        case GLFW_KEY_5: app->m_selectedBlock = BlockType::WOOD; break;
-        case GLFW_KEY_6: app->m_selectedBlock = BlockType::LEAVES; break;
-        case GLFW_KEY_7: app->m_selectedBlock = BlockType::TORCH; break;
-        case GLFW_KEY_8: app->m_selectedBlock = BlockType::GLASS; break;
+        case GLFW_KEY_1: setBlock(BlockType::GRASS); break;
+        case GLFW_KEY_2: setBlock(BlockType::REDSTONE); break;
+        case GLFW_KEY_3: setBlock(BlockType::DIRT); break;
+        case GLFW_KEY_4: setBlock(BlockType::STONE); break;
+        case GLFW_KEY_5: setBlock(BlockType::WOOD); break;
+        case GLFW_KEY_6: setBlock(BlockType::LEAVES); break;
+        case GLFW_KEY_7: setBlock(BlockType::TORCH); break;
+        case GLFW_KEY_8: setBlock(BlockType::GLASS); break;
+        case GLFW_KEY_9:
+            if (!app->m_selectableBlocks.empty()) {
+                app->m_selectedBlockIndex = (app->m_selectedBlockIndex + 1) % app->m_selectableBlocks.size();
+            }
+            break;
+        case GLFW_KEY_0:
+            if (!app->m_selectableBlocks.empty()) {
+                app->m_selectedBlockIndex = (app->m_selectedBlockIndex - 1 + app->m_selectableBlocks.size()) % app->m_selectableBlocks.size();
+            }
+            break;
+
         case GLFW_KEY_F:
             app->m_isFlying = !app->m_isFlying;
             if (app->m_isFlying) app->m_camera.mVelocity.y = 0;
@@ -397,9 +436,18 @@ void Application::onMouseMove(GLFWwindow* window, double xpos, double ypos) {
 
 void Application::onMouseScroll(GLFWwindow* window, double xoffset, double yoffset) {
     Application* app = static_cast<Application*>(glfwGetWindowUserPointer(window));
-    double fov = app->m_camera.getFOV() + yoffset * ZOOM_SENSITIVITY;
-    fov = glm::clamp(fov, 1.0, 120.0);
-    app->m_camera.setFOV((float)fov);
+    if (yoffset != 0.0) {
+        int numBlocks = (int)app->m_selectableBlocks.size();
+        if (numBlocks > 0) {
+            int direction = (yoffset > 0) ? -1 : 1;
+            app->m_selectedBlockIndex = (app->m_selectedBlockIndex + direction + numBlocks) % numBlocks;
+            return; // Le scroll est utilisé pour la sélection
+        }
+    }
+
+    // double fov = app->m_camera.getFOV() + yoffset * ZOOM_SENSITIVITY;
+    // fov = glm::clamp(fov, 1.0, 120.0);
+    // app->m_camera.setFOV((float)fov);
 }
 
 void Application::onFramebufferSize(GLFWwindow* window, int width, int height) {

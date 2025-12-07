@@ -44,7 +44,9 @@ private:
     bool m_wireframe = false;
     bool m_debug = true;
     bool m_isFlying = false;
-    BlockType m_selectedBlock = BlockType::TORCH;
+
+    std::vector<BlockType> m_selectableBlocks;
+    int m_selectedBlockIndex = 0;
 
     // Timing
     double m_lastTime = 0.0;
