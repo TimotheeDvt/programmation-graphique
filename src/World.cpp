@@ -137,7 +137,19 @@ std::vector<glm::vec3> World::getTorchLightPositions() const {
                                         if (chunk->getBlock(x, y, z) == BlockType::TORCH) {
                                                 positions.push_back(
                                                         chunkPos
-                                                        + glm::vec3(x + 0.5f, y + 0.2f, z + 0.5f)
+                                                        + glm::vec3(x + 0.2f, y + 0.2f, z)
+                                                );
+                                                positions.push_back(
+                                                        chunkPos
+                                                        + glm::vec3(x - 0.2f, y + 0.2f, z)
+                                                );
+                                                positions.push_back(
+                                                        chunkPos
+                                                        + glm::vec3(x, y + 0.2f, z + 0.2f)
+                                                );
+                                                positions.push_back(
+                                                        chunkPos
+                                                        + glm::vec3(x, y + 0.2f, z - 0.2f)
                                                 );
                                         }
                                 }

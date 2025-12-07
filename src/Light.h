@@ -36,7 +36,7 @@ inline PointLight CreateRedstoneLight(const glm::vec3& position) {
 }
 
 inline PointLight CreateTorchLight(const glm::vec3& position) {
-    return { position, glm::vec3(0.0f), glm::vec3(1.0f, 0.8f, 0.2f), glm::vec3(0.5f, 0.4f, 0.1f), 1.0f, 0.22f, 0.20f };
+    return { position, glm::vec3(0.0f), glm::vec3(1.0f, 0.8f, 0.2f) * 0.3f, glm::vec3(0.5f, 0.4f, 0.1f), 1.0f, 0.22f, 0.20f };
 }
 
 inline SpotLight CreateEndermanLight(const glm::vec3& position, const glm::vec3& direction) {

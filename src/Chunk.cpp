@@ -335,41 +335,13 @@ void addFace(std::vector<CubeVertex>& vertices, int chunkX, int chunkZ, int x, i
 
 void addTorchMesh(std::vector<CubeVertex>& vertices, int chunkX, int chunkZ, int x, int y, int z) {
     glm::vec3 chunkWorldPos = glm::vec3(chunkX * Chunk::CHUNK_SIZE, 0, chunkZ * Chunk::CHUNK_SIZE);
-    glm::vec3 worldPos = chunkWorldPos + glm::vec3(x + 0.5f, y, z + 0.5f); // center of block
+    glm::vec3 blockCenterWorld = chunkWorldPos + glm::vec3(x, y, z); // Centre du bloc (x, y, z)
 
-    float baseY  = -0.5f;
-    float topY   = 0.5f;
-
-    struct Quad { glm::vec3 p[4]; glm::vec3 normal; };
-    Quad quads[4];
-
-    // Quad 1: along Z
-    quads[0].p[0] = worldPos + glm::vec3(-0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[0].p[1] = worldPos + glm::vec3( 0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[0].p[2] = worldPos + glm::vec3( 0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[0].p[3] = worldPos + glm::vec3(-0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[0].normal = glm::vec3(0, 0, 1);
-
-    // Quad 2: also along Z, but facing the other way for two-sided lighting
-    quads[1].p[0] = worldPos + glm::vec3( 0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[1].p[1] = worldPos + glm::vec3(-0.5f, baseY, 0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[1].p[2] = worldPos + glm::vec3(-0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[1].p[3] = worldPos + glm::vec3( 0.5f, topY,  0.0f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[1].normal = glm::vec3(0, 0, -1);
-
-    // Quad 3: along X
-    quads[2].p[0] = worldPos + glm::vec3(0.0f, baseY, -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[2].p[1] = worldPos + glm::vec3(0.0f, baseY,  0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[2].p[2] = worldPos + glm::vec3(0.0f, topY,   0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[2].p[3] = worldPos + glm::vec3(0.0f, topY,  -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[2].normal = glm::vec3(1, 0, 0);
-
-    // Quad 4: also along X, facing the other way
-    quads[3].p[0] = worldPos + glm::vec3(0.0f, baseY,  0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[3].p[1] = worldPos + glm::vec3(0.0f, baseY, -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[3].p[2] = worldPos + glm::vec3(0.0f, topY,  -0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[3].p[3] = worldPos + glm::vec3(0.0f, topY,   0.5f) - glm::vec3(0.5f, 0.0f, 0.5f);
-    quads[3].normal = glm::vec3(-1, 0, 0);
+    // Dimensions du cuboïde de la torche (relatives au centre du bloc)
+    // 1/8 de la taille du bloc (0.125) en X et Z
+    const float W_HALF = 0.40f; // 1/16 block width/depth (pour avoir 1/8 de côté)
+    const float Y_MIN = -0.5f;    // Bas du voxel
+    const float Y_MAX = -0.5f + 0.75f; // 5/8 de la hauteur du bloc, partant du bas
 
     int textureIndex = -1;
     const auto& config = Chunk::m_textureConfig.at(BlockType::TORCH);
@@ -378,19 +350,92 @@ void addTorchMesh(std::vector<CubeVertex>& vertices, int chunkX, int chunkZ, int
     }
     float texIdx = (float)textureIndex;
 
-    for (int q = 0; q < 4; ++q) {
-        glm::vec3 n = quads[q].normal;
-        CubeVertex v[6];
-        // Tri 1
-        v[0] = {quads[q].p[0], n, glm::vec3(0.0f, 0.0f, texIdx)};
-        v[1] = {quads[q].p[1], n, glm::vec3(1.0f, 0.0f, texIdx)};
-        v[2] = {quads[q].p[2], n, glm::vec3(1.0f, 1.0f, texIdx)};
-        // Tri 2
-        v[3] = {quads[q].p[0], n, glm::vec3(0.0f, 0.0f, texIdx)};
-        v[4] = {quads[q].p[2], n, glm::vec3(1.0f, 1.0f, texIdx)};
-        v[5] = {quads[q].p[3], n, glm::vec3(0.0f, 1.0f, texIdx)};
-        for (int i = 0; i < 6; ++i) vertices.push_back(v[i]);
-    }
+    // Fonction utilitaire pour obtenir les coordonnées de texture (u, v, textureIndex)
+    auto getTorchTexCoords = [&](int corner) -> glm::vec3 {
+        glm::vec2 uv;
+        switch (corner) {
+            case 0: uv = glm::vec2(0.0f, 0.0f); break; // Bas-Gauche
+            case 1: uv = glm::vec2(1.0f, 0.0f); break; // Bas-Droit
+            case 2: uv = glm::vec2(1.0f, 1.0f); break; // Haut-Droit
+            case 3: uv = glm::vec2(0.0f, 1.0f); break; // Haut-Gauche
+            default: uv = glm::vec2(0.0f, 0.0f); break;
+        }
+        return glm::vec3(uv.x, uv.y, texIdx);
+    };
+
+    // Fonction utilitaire pour ajouter une face (2 triangles: c0, c1, c2 puis c0, c2, c3)
+    auto addCubeFace = [&](const glm::vec3& c0, const glm::vec3& c1, const glm::vec3& c2, const glm::vec3& c3, const glm::vec3& normal) {
+        // Triangle 1: c0 (0), c1 (1), c2 (2)
+        vertices.push_back({blockCenterWorld + c0, normal, getTorchTexCoords(0)});
+        vertices.push_back({blockCenterWorld + c1, normal, getTorchTexCoords(1)});
+        vertices.push_back({blockCenterWorld + c2, normal, getTorchTexCoords(2)});
+        // Triangle 2: c0 (0), c2 (2), c3 (3)
+        vertices.push_back({blockCenterWorld + c0, normal, getTorchTexCoords(0)});
+        vertices.push_back({blockCenterWorld + c2, normal, getTorchTexCoords(2)});
+        vertices.push_back({blockCenterWorld + c3, normal, getTorchTexCoords(3)});
+    };
+
+    // --- 1. Face du Bas (-Y) ---
+    glm::vec3 n_bottom(0.0f, -1.0f, 0.0f);
+    addCubeFace(
+        glm::vec3(-0.40, Y_MIN,  0.05), // c0: xmin, ymax, zmax
+        glm::vec3( 0.40, Y_MIN,  0.05), // c1: xmax, ymax, zmax
+        glm::vec3( 0.40, Y_MIN, -0.10), // c2: xmax, ymax, zmin
+        glm::vec3(-0.40, Y_MIN, -0.10), // c3: xmin, ymax, zmin
+        n_bottom
+    );
+
+    // --- 2. Face du Haut (+Y) ---
+    glm::vec3 n_top(0.0f, 1.0f, 0.0f);
+    // Ordre des coins inversé pour le sens d'enroulement (winding order) correct
+    addCubeFace(
+        glm::vec3(-0.40, Y_MAX - 0.28,  0.05), // c0: xmin, ymax, zmax
+        glm::vec3( 0.40, Y_MAX - 0.28,  0.05), // c1: xmax, ymax, zmax
+        glm::vec3( 0.40, Y_MAX - 0.28, -0.10), // c2: xmax, ymax, zmin
+        glm::vec3(-0.40, Y_MAX - 0.28, -0.10), // c3: xmin, ymax, zmin
+        n_top
+    );
+
+    // --- 3. Face Avant (+Z) ---
+    glm::vec3 n_front(0.0f, 0.0f, 1.0f);
+    addCubeFace(
+        glm::vec3(-W_HALF, Y_MIN,  W_HALF - 0.35f), // c0: xmin, ymin, zmax
+        glm::vec3( W_HALF, Y_MIN,  W_HALF - 0.35f), // c1: xmax, ymin, zmax
+        glm::vec3( W_HALF, Y_MAX,  W_HALF - 0.35f), // c2: xmax, ymax, zmax
+        glm::vec3(-W_HALF, Y_MAX,  W_HALF - 0.35f), // c3: xmin, ymax, zmax
+        n_front
+    );
+
+    // --- 4. Face Arrière (-Z) ---
+    glm::vec3 n_back(0.0f, 0.0f, -1.0f);
+    // Ordre des coins inversé pour le sens d'enroulement (winding order) correct
+    addCubeFace(
+        glm::vec3( W_HALF, Y_MIN, -W_HALF + 0.35), // c0: xmax, ymin, zmin
+        glm::vec3(-W_HALF, Y_MIN, -W_HALF + 0.35), // c1: xmin, ymin, zmin
+        glm::vec3(-W_HALF, Y_MAX, -W_HALF + 0.35), // c2: xmin, ymax, zmin
+        glm::vec3( W_HALF, Y_MAX, -W_HALF + 0.35), // c3: xmax, ymax, zmin
+        n_back
+    );
+
+    // --- 5. Face Droite (+X) ---
+    glm::vec3 n_right(1.0f, 0.0f, 0.0f);
+    addCubeFace(
+        glm::vec3( W_HALF - 0.35, Y_MIN,  W_HALF), // c0: xmax, ymin, zmax
+        glm::vec3( W_HALF - 0.35, Y_MIN, -W_HALF), // c1: xmax, ymin, zmin
+        glm::vec3( W_HALF - 0.35, Y_MAX, -W_HALF), // c2: xmax, ymax, zmin
+        glm::vec3( W_HALF - 0.35, Y_MAX,  W_HALF), // c3: xmax, ymax, zmax
+        n_right
+    );
+
+    // --- 6. Face Gauche (-X) ---
+    glm::vec3 n_left(-1.0f, 0.0f, 0.0f);
+    addCubeFace(
+        glm::vec3(-W_HALF + 0.35, Y_MIN, -W_HALF), // c0: xmin, ymin, zmin
+        glm::vec3(-W_HALF + 0.35, Y_MIN,  W_HALF), // c1: xmin, ymin, zmax
+        glm::vec3(-W_HALF + 0.35, Y_MAX,  W_HALF), // c2: xmin, ymax, zmax
+        glm::vec3(-W_HALF + 0.35, Y_MAX, -W_HALF), // c3: xmin, ymax, zmin
+        n_left
+    );
 }
 
 void Chunk::buildMesh() {
