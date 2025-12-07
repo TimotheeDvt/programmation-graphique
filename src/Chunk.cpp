@@ -60,14 +60,14 @@ void Chunk::generate(long long worldSeed) {
                         }
 
                         // Generate torches
-                        if (dist(rng) < 0.0004f && height + 1 < CHUNK_HEIGHT - 1) {
-                                mBlocks[x][height][z] = BlockType::TORCH;
-                        }
+                        // if (dist(rng) < 0.0004f && height + 1 < CHUNK_HEIGHT - 1) {
+                        //         mBlocks[x][height][z] = BlockType::TORCH;
+                        // }
 
-                        // Generate redstone blocks
-                        if (dist(rng) < 0.0002f) {
-                                mBlocks[x][height - 1][z] = BlockType::REDSTONE;
-                        }
+                        // // Generate redstone blocks
+                        // if (dist(rng) < 0.00005f) {
+                        //         mBlocks[x][height - 1][z] = BlockType::REDSTONE;
+                        // }
 
 
                         // Tree generation

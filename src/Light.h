@@ -32,7 +32,7 @@ struct SpotLight {
 };
 
 inline PointLight CreateRedstoneLight(const glm::vec3& position) {
-    return { position, glm::vec3(0.0f), glm::vec3(1.0f, 0.1f, 0.1f), glm::vec3(0.5f, 0.1f, 0.1f), 1.0f, 0.14f, 0.07f };
+    return { position, glm::vec3(0.5f), glm::vec3(1.0f, 0.1f, 0.1f), glm::vec3(0.5f, 0.1f, 0.1f), 1.0f, 0.14f, 0.07f };
 }
 
 inline PointLight CreateTorchLight(const glm::vec3& position) {

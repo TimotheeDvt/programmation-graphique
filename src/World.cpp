@@ -108,7 +108,14 @@ std::vector<glm::vec3> World::getRedstoneLightPositions() const {
                                 for (int z = 0; z < Chunk::CHUNK_SIZE; z++) {
                                         if (chunk->getBlock(x, y, z) == BlockType::REDSTONE) {
                                                 glm::vec3 basePos = chunkPos + glm::vec3(x, y, z);
-                                                positions.push_back(basePos + glm::vec3(0.5f, 0.5f, 0.5f));
+
+                                                positions.push_back(basePos + glm::vec3(0.0f, 0.0f, 1.01f));
+                                                positions.push_back(basePos + glm::vec3(0.0f, 1.01f, 0.0f));
+                                                positions.push_back(basePos + glm::vec3(1.01f, 0.0f, 0.0f));
+
+                                                positions.push_back(basePos + glm::vec3(0.0f, 0.0f, -1.01f));
+                                                // positions.push_back(basePos + glm::vec3(0.0f, -1.01f, 0.0f));
+                                                positions.push_back(basePos + glm::vec3(-1.01f, 0.0f, 0.0f));
                                         }
                                 }
                         }

@@ -187,7 +187,7 @@ void Application::init() {
 }
 
 void Application::initResources() {
-    m_world.generate(1, -1);
+    m_world.generate(2, -1);
 
     const auto& pathToIndex = Chunk::m_pathToTextureIndex;
     int numTexturesToBind = (int)pathToIndex.size();
