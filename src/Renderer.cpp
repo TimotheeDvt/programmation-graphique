@@ -1,16 +1,22 @@
 #include "Renderer.h"
 #include "Constants.h"
 #include "Chunk.h"
-#include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/rotate_vector.hpp>
+#include <iostream>
 
 Renderer::Renderer() {
     m_dirLight = {
-        glm::vec3(-0.3f, -0.8f, -0.5f),
+        glm::vec3(0.0f, -1.0f, 0.1f), // Initial sun position (midday)
         glm::vec3(0.3f, 0.3f, 0.35f) * 0.2f,
         glm::vec3(0.8f, 0.8f, 0.7f) * 0.5f,
         glm::vec3(0.3f, 0.3f, 0.3f) * 0.5f
     };
+
+    // Initialize m_whiteTexture for solid color GUI elements
+    unsigned char whitePixel[] = { 255, 255, 255, 255 }; // RGBA
+    m_whiteTexture = std::make_unique<Texture2D>();
+    m_whiteTexture->loadFromMemory(1, 1, whitePixel);
 }
 
 Renderer::~Renderer() {
@@ -164,6 +170,21 @@ void Renderer::render(const FPSCamera& camera, const World& world, const Scene& 
     mainRenderPass(camera, world, scene, meshCache, modelTextureCache, blockTextures, pointLights, spotLights, windowWidth, windowHeight);
 }
 
+void Renderer::updateSun(float deltaTime) {
+    // Vitesse de rotation du soleil (complète un cycle en 120 secondes)
+    const float cycleDuration = 60.0f;
+    const float rotationSpeed = 2.0f * glm::pi<float>() / cycleDuration;
+
+    m_sunAngle += rotationSpeed * deltaTime;
+    if (m_sunAngle > 2.0f * glm::pi<float>()) {
+        m_sunAngle -= 2.0f * glm::pi<float>();
+    }
+
+    // Rotation autour de l'axe X (lever/coucher sur l'axe Z)
+    m_dirLight.direction = glm::vec3(0.0f, -sin(m_sunAngle), -cos(m_sunAngle));
+    m_dirLight.direction = glm::normalize(m_dirLight.direction);
+}
+
 void Renderer::renderScene(ShaderProgram& shader, const World& world, const Scene& scene,
                            const std::map<std::string, std::unique_ptr<Mesh>>& meshCache) {
     glm::mat4 model(1.0f);
@@ -185,16 +206,47 @@ void Renderer::renderScene(ShaderProgram& shader, const World& world, const Scen
 
 void Renderer::dirShadowPass(const FPSCamera& camera, const World& world, const Scene& scene,
                              const std::map<std::string, std::unique_ptr<Mesh>>& meshCache, const Texture2D* blockTextures) {
-    float dir_near_plane = 1.0f, dir_far_plane = 70.0f;
+float dir_near_plane = 1.0f, dir_far_plane = 70.0f;
+    // Orthographic bounds are [-40, 40], so total frustum size is 80 units.
     glm::mat4 dirLightProjection = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, dir_near_plane, dir_far_plane);
     glm::vec3 centerPos = camera.getPosition();
-    glm::mat4 dirLightView = glm::lookAt(centerPos - m_dirLight.direction * 20.0f, centerPos, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // 1. Initial Light View matrix
+    glm::vec3 lightTarget = centerPos;
+    glm::vec3 lightPos = lightTarget - m_dirLight.direction * 20.0f;
+    glm::mat4 dirLightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // 2. Snapping Logic for Voxel Alignment (Fixes diagonal/misaligned shadows)
+    glm::mat4 lightSpace = dirLightProjection * dirLightView;
+    glm::vec4 shadowOrigin = lightSpace * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    // Scale factor: Frustum size (80.0f) / Resolution (2048) -> inverted for texel size
+    float worldToTexel = (float)DIR_SHADOW_WIDTH / 80.0f;
+    shadowOrigin *= worldToTexel;
+
+    // Snap the light-view coordinates to the nearest pixel center (floor)
+    shadowOrigin.x = floor(shadowOrigin.x);
+    shadowOrigin.y = floor(shadowOrigin.y);
+
+    // Transform back to world space
+    glm::mat4 inverseLightSpace = glm::inverse(lightSpace);
+    glm::vec4 snappedOrigin = inverseLightSpace * (shadowOrigin / worldToTexel);
+
+    // Calculate the translation correction and apply it to the light's position/target
+    glm::vec3 translation = glm::vec3(snappedOrigin) - lightTarget;
+    lightTarget += translation;
+    lightPos += translation;
+
+    // 3. Recalculate Light View and final Light Space Matrix with snapped position
+    dirLightView = glm::lookAt(lightPos, lightTarget, glm::vec3(0.0f, 1.0f, 0.0f));
     m_dirLightSpaceMatrix = dirLightProjection * dirLightView;
 
     glViewport(0, 0, DIR_SHADOW_WIDTH, DIR_SHADOW_HEIGHT);
     glBindFramebuffer(GL_FRAMEBUFFER, m_dirShadowMapFBO);
     glClear(GL_DEPTH_BUFFER_BIT);
-    glCullFace(GL_FRONT);
+    // glCullFace(GL_FRONT);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(4.0f, 100.0f);
 
     m_depthShader->use();
     m_depthShader->setUniform("lightSpaceMatrix", m_dirLightSpaceMatrix);
@@ -211,6 +263,8 @@ void Renderer::dirShadowPass(const FPSCamera& camera, const World& world, const 
         blockTextures[i].unbind(i);
     }
 
+    // glCullFace(GL_BACK);
+    glDisable(GL_POLYGON_OFFSET_FILL);
     glCullFace(GL_BACK);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -558,4 +612,66 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glEnable(GL_CULL_FACE);
+}
+
+void Renderer::drawSunGizmo(const FPSCamera& camera, int windowWidth, int windowHeight, bool debug) {
+    if (m_guiVAO == 0) return;
+
+    std::cout << "Mode debug du soleil : " << (debug ? "Activé" : "Désactivé") << std::endl;
+
+    // 1. Obtenir les matrices de vue et de projection
+    glm::mat4 view = camera.getViewMatrix();
+    float aspectRatio = (float)windowWidth / (float)windowHeight;
+    glm::mat4 projection = glm::perspective(glm::radians(camera.getFOV()), aspectRatio, 0.1f, 200.0f);
+
+    // 2. Calculer la position du soleil dans l'espace de découpage (clip space)
+    // Le soleil est une lumière directionnelle, donc nous le plaçons très loin dans la direction opposée.
+    glm::vec3 sunWorldPos = camera.getPosition() - m_dirLight.direction * 100.0f;
+    glm::vec4 sunClipSpace = projection * view * glm::vec4(sunWorldPos, 1.0f);
+
+    // 3. Vérifier si le soleil est devant la caméra
+    if (sunClipSpace.w < 0.0f) {
+        return; // Le soleil est derrière la caméra, ne pas le dessiner.
+    }
+
+    // 4. Convertir les coordonnées de l'espace de découpage en coordonnées d'écran
+    glm::vec3 sunNDC = glm::vec3(sunClipSpace) / sunClipSpace.w; // Division de perspective
+    float screenX = (sunNDC.x + 1.0f) / 2.0f * windowWidth;
+    float screenY = (sunNDC.y + 1.0f) / 2.0f * windowHeight;
+
+    // 5. Dessiner le carré
+    m_guiShader->use();
+    glm::mat4 ortho = glm::ortho(0.0f, (float)windowWidth, 0.0f, (float)windowHeight);
+    m_guiShader->setUniform("projection", ortho);
+
+    if (debug) {
+        glDisable(GL_DEPTH_TEST);
+    } else {
+        glEnable(GL_DEPTH_TEST);
+    }
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    float size = 60.0f;
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(screenX - size / 2.0f, screenY - size / 2.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(size, size, 1.0f));
+
+    m_guiShader->setUniform("model", model);
+    m_guiShader->setUniform("tintColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow
+    m_whiteTexture->bind(0); // Bind the white texture to unit 0
+    m_guiShader->setUniformSampler("guiTexture", 0);
+
+    glBindVertexArray(m_guiVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    if (debug) {
+        glEnable(GL_DEPTH_TEST);
+    }
+
+    glDisable(GL_BLEND);
+    m_whiteTexture->unbind(0); // Unbind the white texture
+
+    m_guiShader->setUniform("view", glm::mat4(1.0f)); // Reset view matrix for other GUI elements
 }

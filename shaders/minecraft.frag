@@ -198,7 +198,7 @@ float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     // 5. Profondeur du fragment actuel
     float currentDepth = projCoords.z;
     // 6. Bias pour éviter le Shadow Acne
-    float bias = max(0.0005 * (1.0 - dot(normal, lightDir)), 0.002);
+    float bias = max(0.0008 * (1.0 - dot(normal, lightDir)), 0.008);
     // 7. Comparaison de la profondeur
     float shadow = currentDepth - bias > closestDepth ? 0.0 : 1.0;
 

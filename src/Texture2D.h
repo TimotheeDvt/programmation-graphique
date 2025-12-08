@@ -11,6 +11,7 @@ class Texture2D {
         virtual ~Texture2D();
 
         bool loadTexture(const string& fileName, bool generateMipMaps = true);
+        bool loadFromMemory(int width, int height, const unsigned char* data, bool generateMipMaps = false);
         void bind(GLuint textUnit = 0) const;
         void unbind(GLuint textUnit = 0) const;
     private:

@@ -297,6 +297,8 @@ void Application::processInput(double deltaTime) {
 }
 
 void Application::update(double deltaTime) {
+    m_renderer->updateSun(deltaTime);
+
     if (!m_isFlying) {
         m_camera.applyPhysics(m_world, deltaTime);
     }
@@ -374,6 +376,8 @@ void Application::render() {
                                  m_selectableBlocks, m_width, m_height);
 
     m_renderer->drawCrosshair(m_width, m_height);
+
+    m_renderer->drawSunGizmo(m_camera, m_width, m_height, m_debug);
 }
 
 void Application::onKey(GLFWwindow* window, int key, int scancode, int action, int mode) {

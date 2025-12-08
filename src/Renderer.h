@@ -33,6 +33,10 @@ public:
                           int windowWidth, int windowHeight
     );
 
+    void drawSunGizmo(const FPSCamera& camera, int windowWidth, int windowHeight, bool debug = false);
+
+    void updateSun(float deltaTime);
+
 private:
     void initShaders();
     void initShadows();
@@ -75,4 +79,10 @@ private:
 
     // Directional Light
     DirectionalLight m_dirLight;
+
+    // Sun cycle
+    float m_sunAngle = 0.0f;
+
+    // Utility texture for GUI elements that need a solid color
+    std::unique_ptr<Texture2D> m_whiteTexture;
 };
