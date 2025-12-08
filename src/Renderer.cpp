@@ -524,6 +524,9 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
 
     m_guiShader->use();
 
+    m_guiShader->setUniform("is3D", 0);
+    m_guiShader->setUniform("view", glm::mat4(1.0f));
+
     glm::mat4 ortho = glm::ortho(0.0f, (float)windowWidth, 0.0f, (float)windowHeight);
     m_guiShader->setUniform("projection", ortho);
 
@@ -617,61 +620,101 @@ void Renderer::drawInventoryHUD(const Texture2D* blockTextures, int numTextures,
 void Renderer::drawSunGizmo(const FPSCamera& camera, int windowWidth, int windowHeight, bool debug) {
     if (m_guiVAO == 0) return;
 
-    std::cout << "Mode debug du soleil : " << (debug ? "Activé" : "Désactivé") << std::endl;
+    // Constante pour la taille désirée du gizmo à l'écran (en pixels)
+    const float GIZMO_PIXEL_SIZE = 60.0f;
 
-    // 1. Obtenir les matrices de vue et de projection
-    glm::mat4 view = camera.getViewMatrix();
-    float aspectRatio = (float)windowWidth / (float)windowHeight;
-    glm::mat4 projection = glm::perspective(glm::radians(camera.getFOV()), aspectRatio, 0.1f, 200.0f);
-
-    // 2. Calculer la position du soleil dans l'espace de découpage (clip space)
-    // Le soleil est une lumière directionnelle, donc nous le plaçons très loin dans la direction opposée.
+    // 1. Calculer la position 3D du soleil (éloignée de la caméra dans la direction opposée à la lumière)
     glm::vec3 sunWorldPos = camera.getPosition() - m_dirLight.direction * 100.0f;
-    glm::vec4 sunClipSpace = projection * view * glm::vec4(sunWorldPos, 1.0f);
 
-    // 3. Vérifier si le soleil est devant la caméra
-    if (sunClipSpace.w < 0.0f) {
-        return; // Le soleil est derrière la caméra, ne pas le dessiner.
-    }
-
-    // 4. Convertir les coordonnées de l'espace de découpage en coordonnées d'écran
-    glm::vec3 sunNDC = glm::vec3(sunClipSpace) / sunClipSpace.w; // Division de perspective
-    float screenX = (sunNDC.x + 1.0f) / 2.0f * windowWidth;
-    float screenY = (sunNDC.y + 1.0f) / 2.0f * windowHeight;
-
-    // 5. Dessiner le carré
     m_guiShader->use();
-    glm::mat4 ortho = glm::ortho(0.0f, (float)windowWidth, 0.0f, (float)windowHeight);
-    m_guiShader->setUniform("projection", ortho);
 
-    if (debug) {
-        glDisable(GL_DEPTH_TEST);
-    } else {
-        glEnable(GL_DEPTH_TEST);
-    }
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    float size = 60.0f;
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(screenX - size / 2.0f, screenY - size / 2.0f, 0.0f));
-    model = glm::scale(model, glm::vec3(size, size, 1.0f));
+
+    if (debug) {
+        // --- MODE DEBUG (2D, par-dessus tout) ---
+        // Le gizmo est rendu en 2D avec une taille fixe en pixels.
+
+        glm::mat4 view = camera.getViewMatrix();
+        float aspectRatio = (float)windowWidth / (float)windowHeight;
+        glm::mat4 projection = glm::perspective(glm::radians(camera.getFOV()), aspectRatio, 0.1f, 200.0f);
+        glm::vec4 sunClipSpace = projection * view * glm::vec4(sunWorldPos, 1.0f);
+
+        // Vérifier si le soleil est derrière
+        if (sunClipSpace.w < 0.0f) {
+            glDisable(GL_BLEND);
+            return;
+        }
+
+        // Projection en coordonnées écran
+        glm::vec3 sunNDC = glm::vec3(sunClipSpace) / sunClipSpace.w;
+        float screenX = (sunNDC.x + 1.0f) / 2.0f * windowWidth;
+        float screenY = (sunNDC.y + 1.0f) / 2.0f * windowHeight;
+
+        glm::mat4 ortho = glm::ortho(0.0f, (float)windowWidth, 0.0f, (float)windowHeight);
+
+        m_guiShader->setUniform("is3D", 0);
+        m_guiShader->setUniform("view", glm::mat4(1.0f));
+        m_guiShader->setUniform("projection", ortho);
+
+        glDisable(GL_DEPTH_TEST);
+
+        // Positionnement et mise à l'échelle en 2D (taille fixe GIZMO_PIXEL_SIZE)
+        model = glm::translate(model, glm::vec3(screenX - GIZMO_PIXEL_SIZE / 2.0f, screenY - GIZMO_PIXEL_SIZE / 2.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(GIZMO_PIXEL_SIZE, GIZMO_PIXEL_SIZE, 1.0f));
+
+    } else {
+        // --- MODE NORMAL (3D, avec occlusion) ---
+        // Le gizmo est rendu comme un billboard 3D soumis au test de profondeur.
+
+        glm::mat4 view = camera.getViewMatrix();
+        float aspectRatio = (float)windowWidth / (float)windowHeight;
+        glm::mat4 projection = glm::perspective(glm::radians(camera.getFOV()), aspectRatio, 0.1f, 200.0f);
+
+        m_guiShader->setUniform("is3D", 1);
+        m_guiShader->setUniform("view", view);
+        m_guiShader->setUniform("projection", projection);
+
+        glEnable(GL_DEPTH_TEST);
+
+        // 3. Modèle 3D: Position + Billboard + Redimensionnement
+
+        // a) Positionnement au point du soleil
+        model = glm::translate(model, sunWorldPos);
+
+        // b) Orientation Billboard (annule la rotation de la vue pour toujours faire face à la caméra)
+        model = model * glm::mat4(glm::mat3(view));
+
+        // c) Mise à l'échelle pour une taille constante (en pixels)
+        float distance = glm::length(sunWorldPos - camera.getPosition());
+        float fovRad = glm::radians(camera.getFOV());
+
+        // Calcul du facteur d'échelle 3D pour obtenir la taille GIZMO_PIXEL_SIZE à l'écran.
+        // WorldScale = 2 * distance * tan(FOV_rad/2) * (Target_Pixels / Window_Height)
+        float frustumHalfHeight = distance * glm::tan(fovRad / 2.0f);
+        float frustumWorldHeight = frustumHalfHeight * 2.0f;
+        float scaleFactor = frustumWorldHeight * (GIZMO_PIXEL_SIZE / (float)windowHeight);
+
+        // Taille minimale pour éviter qu'il ne devienne invisible
+        scaleFactor = glm::max(scaleFactor, 0.5f);
+
+        model = glm::scale(model, glm::vec3(scaleFactor));
+    }
 
     m_guiShader->setUniform("model", model);
-    m_guiShader->setUniform("tintColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Yellow
-    m_whiteTexture->bind(0); // Bind the white texture to unit 0
+    m_guiShader->setUniform("tintColor", glm::vec3(1.0f, 1.0f, 0.0f));
+    m_whiteTexture->bind(0);
     m_guiShader->setUniformSampler("guiTexture", 0);
 
     glBindVertexArray(m_guiVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 
-    if (debug) {
-        glEnable(GL_DEPTH_TEST);
-    }
-
+    // Nettoyage
+    m_guiShader->setUniform("is3D", 0);
+    m_whiteTexture->unbind(0);
     glDisable(GL_BLEND);
-    m_whiteTexture->unbind(0); // Unbind the white texture
-
-    m_guiShader->setUniform("view", glm::mat4(1.0f)); // Reset view matrix for other GUI elements
+    glEnable(GL_DEPTH_TEST);
 }
