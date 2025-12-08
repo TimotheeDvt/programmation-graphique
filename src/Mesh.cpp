@@ -44,8 +44,6 @@ bool Mesh::loadObj(const std::string& filename) {
                         return false;
                 }
 
-                std::cout << "Loading OBJ file " << filename << " ..." << std::endl;
-
                 std::string lineBuffer;
                 while (std::getline(fin, lineBuffer)) {
                         // Ignorer les lignes vides et les commentaires
@@ -78,7 +76,6 @@ bool Mesh::loadObj(const std::string& filename) {
                         } else if (cmd == "mtllib") {
                                 std::string mtlFile;
                                 ss >> mtlFile;
-                                std::cout << "  Material library: " << mtlFile << std::endl;
                                 mMaterialLibrary = mtlFile;
                                 // Extraire le chemin du fichier OBJ
                                 size_t lastSlash = filename.find_last_of("/\\");
@@ -87,21 +84,18 @@ bool Mesh::loadObj(const std::string& filename) {
                         } else if (cmd == "usemtl") {
                                 std::string materialName;
                                 ss >> materialName;
-                                std::cout << "  Using material: " << materialName << std::endl;
                                 currentMaterial = materialName;
                         } else if (cmd == "o") {
                                 std::string objectName;
                                 std::getline(ss, objectName);
                                 if (!objectName.empty() && objectName[0] == ' ')
                                         objectName = objectName.substr(1);
-                                std::cout << "  Object: " << objectName << std::endl;
                                 currentObject = objectName;
                         } else if (cmd == "g") {
                                 std::string groupName;
                                 std::getline(ss, groupName);
                                 if (!groupName.empty() && groupName[0] == ' ')
                                         groupName = groupName.substr(1);
-                                std::cout << "  Group: " << groupName << std::endl;
                                 currentGroup = groupName;
                         } else if (cmd == "s") {
                                 std::string smoothing;
@@ -111,7 +105,6 @@ bool Mesh::loadObj(const std::string& filename) {
                                 } else {
                                         currentSmoothingGroup = std::stoi(smoothing);
                                 }
-                                std::cout << "  Smoothing group: " << currentSmoothingGroup << std::endl;
                         } else if (cmd == "f") {
                                 std::string faceData;
                                 std::vector<std::string> faceVertices;
@@ -184,20 +177,12 @@ bool Mesh::loadObj(const std::string& filename) {
 
                 // Validation des données
                 if (tempVertices.empty()) {
-                        std::cerr << "Error: No vertices found in " << filename << std::endl;
                         return false;
                 }
-
-                std::cout << "  Vertices: " << tempVertices.size() << std::endl;
-                std::cout << "  Normals: " << tempNormals.size() << std::endl;
-                std::cout << "  UVs: " << tempUVs.size() << std::endl;
-                std::cout << "  Triangles: " << (vertexIndices.size() / 3) << std::endl;
-                std::cout << "  SubMeshes: " << mSubMeshes.size() << std::endl;
 
                 // Calculer les normales si elles sont absentes
                 bool needToGenerateNormals = tempNormals.empty();
                 if (needToGenerateNormals) {
-                        std::cout << "  Generating normals..." << std::endl;
                         tempNormals.resize(tempVertices.size(), glm::vec3(0.0f));
 
                         // Calculer les normales par face et les accumuler
@@ -228,7 +213,6 @@ bool Mesh::loadObj(const std::string& filename) {
 
                 // Générer des UVs par défaut si absents
                 if (tempUVs.empty()) {
-                        std::cout << "  No UVs found, using default (0,0)" << std::endl;
                         tempUVs.resize(tempVertices.size(), glm::vec2(0.0f));
                 }
 
@@ -267,8 +251,6 @@ bool Mesh::loadObj(const std::string& filename) {
                         mVertices.push_back(meshVertex);
                 }
 
-                std::cout << "  Final vertices: " << mVertices.size() << std::endl;
-
                 // Créer et initialiser les buffers
                 initBuffers();
 
@@ -284,8 +266,6 @@ bool Mesh::loadMaterial(const std::string& filename) {
                 std::cerr << "Cannot open material file " << filename << std::endl;
                 return false;
         }
-
-        std::cout << "  Loading materials from " << filename << " ..." << std::endl;
 
         Material currentMaterial;
         std::string currentMaterialName = "";
@@ -304,7 +284,6 @@ bool Mesh::loadMaterial(const std::string& filename) {
                         // Sauvegarder le matériau précédent
                         if (hasMaterial && !currentMaterialName.empty()) {
                                 mMaterials[currentMaterialName] = currentMaterial;
-                                std::cout << "    Material: " << currentMaterialName << std::endl;
                         }
 
                         // Nouveau matériau
@@ -379,11 +358,9 @@ bool Mesh::loadMaterial(const std::string& filename) {
         // Sauvegarder le dernier matériau
         if (hasMaterial && !currentMaterialName.empty()) {
                 mMaterials[currentMaterialName] = currentMaterial;
-                std::cout << "    Material: " << currentMaterialName << std::endl;
         }
 
         fin.close();
-        std::cout << "  Loaded " << mMaterials.size() << " materials" << std::endl;
         return true;
 }
 
