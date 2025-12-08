@@ -200,12 +200,7 @@ float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     // 6. Bias pour éviter le Shadow Acne
     float bias = max(0.0005 * (1.0 - dot(normal, lightDir)), 0.002);
     // 7. Comparaison de la profondeur
-    float shadow = 1.0;
-    if (currentDepth - bias > closestDepth) {
-        shadow = 0.0;
-        if (TexIndex == 7)
-            shadow = 0.5; // Less shadow for leaves
-    }
+    float shadow = currentDepth - bias > closestDepth ? 0.0 : 1.0;
 
     return shadow;
 }
@@ -228,18 +223,12 @@ float SpotShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir, 
             float closestDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
             float currentDepth = projCoords.z;
             float bias = max(0.0005 * (1.0 - dot(normal, lightDir)), 0.002);
-            if (currentDepth - bias > closestDepth) {
-                if (TexIndex == 7)
-                    shadow += 0.5; // Less shadow for leaves
-            } else {
-                shadow += 1.0;
-            }
+            shadow += currentDepth - bias > closestDepth ? 0.0 : 1.0;
         }
     }
     return shadow / 9.0;
 }
 
-// NOUVEAU: Shadow Cube Map pour Point Light (avec PCF)
 float PointShadowCalculation(vec3 fragPos, vec3 lightPos, samplerCube shadowMap, float farPlane) {
     vec3 fragToLight = fragPos - lightPos;
     float currentDistance = length(fragToLight);
@@ -259,11 +248,7 @@ float PointShadowCalculation(vec3 fragPos, vec3 lightPos, samplerCube shadowMap,
     for (int i = 0; i < pcfSamples; ++i) {
         float closestDepth = texture(shadowMap, fragToLight + sampleOffsetDirections[i] * spread).r;
         closestDepth *= farPlane; // De-normalize
-        if (currentDistance - bias > closestDepth) {
-            if (TexIndex == 7) shadow += 0.5; // Less shadow for leaves
-        } else {
-            shadow += 1.0;
-        }
+        shadow += currentDistance - bias > closestDepth ? 0.0 : 1.0;
     }
     return shadow / float(pcfSamples);
 }

@@ -6,8 +6,8 @@ uniform float farPlane; // Portée de la lumière
 flat in int TexIndex;
 
 void main() {
-    if (TexIndex == 9 || TexIndex == 8 || TexIndex == 4) {
-        discard; // discard Redstone, Torches and Glass
+    if (TexIndex == 8 || TexIndex == 4) {
+        discard; // discard Redstone and Torches
     }
     // Calculer la distance linéaire de la lumière au fragment
     float lightDistance = length(FragPos.xyz - lightPos);
