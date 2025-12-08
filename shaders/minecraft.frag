@@ -116,6 +116,7 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec
         vec3 ambient = vec3(0.0);
 
         float shadow = DirShadowCalculation(LightSpacePos, normal, lightDir);
+
         // Diffuse
         float diff = max(dot(normal, lightDir), 0.0);
         vec3 diffuse = light.diffuse * diff * texColor * shadow;
@@ -135,6 +136,7 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, v
         float distance = length(light.position - fragPos);
 
         float shadow = PointShadowCalculation(fragPos, light.position, shadowMap, farPlane);
+
         vec3 ambient = vec3(0.0);
 
         // Diffuse
@@ -164,7 +166,6 @@ vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec
 
         vec4 fragPosLightSpace = lightSpaceMatrix * vec4(fragPos, 1.0f);
         float shadow = SpotShadowCalculation(fragPosLightSpace, normal, lightDir, shadowMap);
-
         vec3 ambient = vec3(0.0);
 
         // Diffuse
@@ -199,7 +200,12 @@ float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     // 6. Bias pour éviter le Shadow Acne
     float bias = max(0.0005 * (1.0 - dot(normal, lightDir)), 0.002);
     // 7. Comparaison de la profondeur
-    float shadow = currentDepth - bias > closestDepth ? 0.0 : 1.0;
+    float shadow = 1.0;
+    if (currentDepth - bias > closestDepth) {
+        shadow = 0.0;
+        if (TexIndex == 7)
+            shadow = 1.0; // Less shadow for leaves
+    }
 
     return shadow;
 }
@@ -222,7 +228,12 @@ float SpotShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir, 
             float closestDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
             float currentDepth = projCoords.z;
             float bias = max(0.0005 * (1.0 - dot(normal, lightDir)), 0.002);
-            shadow += currentDepth - bias > closestDepth ? 0.0 : 1.0;
+            if (currentDepth - bias > closestDepth) {
+                if (TexIndex == 7)
+                    shadow += 0.5; // Less shadow for leaves
+            } else {
+                shadow += 1.0;
+            }
         }
     }
     return shadow / 9.0;
@@ -234,33 +245,25 @@ float PointShadowCalculation(vec3 fragPos, vec3 lightPos, samplerCube shadowMap,
     float currentDistance = length(fragToLight);
 
     // PCF
-    float shadow_total = 0.0;
-    float samples = 25.0;
-    float layerSize = 5.0; // 5x5 cube face samples
-    float diskRadius = 0.5f; // Ajustez cette valeur pour l'effet de flou
+    float shadow = 0.0;
+    int pcfSamples = 4;
+    float spread = 0.005;
+    float bias = 0.05;
+    vec3 sampleOffsetDirections[20] = vec3[](vec3( 1,  1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1), 
+       vec3(1, 1, -1), vec3(1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+       vec3(1, 1,  0), vec3(1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+       vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+       vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+    );
 
-    // Pour chaque échantillon dans un disque autour de la direction
-    for (float i = -layerSize/2.0; i <= layerSize/2.0; ++i) {
-        for (float j = -layerSize/2.0; j <= layerSize/2.0; ++j) {
-            // Calculer la direction échantillonnée
-            vec3 sampleDirection = normalize(fragToLight + vec3(i, j, 0.0) * diskRadius / layerSize);
-
-            // Lire la profondeur stockée (distance linéaire normalisée)
-            // Note: La fonction `texture` sur samplerCube lit la profondeur basée sur le vecteur directionnel
-            float closestDepth = texture(shadowMap, sampleDirection).r;
-
-            // Dé-normaliser la distance lue
-            float closestDistance = closestDepth * farPlane;
-
-            // Bias (plus le fragment est proche de la lumière et plus la normale est alignée)
-            // Un petit bias constant peut être plus stable
-            float bias = 0.05 * (1.0 - abs(dot(normalize(Normal), normalize(fragToLight))));
-            if (currentDistance - bias > closestDistance)
-                shadow_total += 0.0;
-            else
-                shadow_total += 1.0;
+    for (int i = 0; i < pcfSamples; ++i) {
+        float closestDepth = texture(shadowMap, fragToLight + sampleOffsetDirections[i] * spread).r;
+        closestDepth *= farPlane; // De-normalize
+        if (currentDistance - bias > closestDepth) {
+            if (TexIndex == 7) shadow += 0.5; // Less shadow for leaves
+        } else {
+            shadow += 1.0;
         }
     }
-
-    return shadow_total / (layerSize * layerSize);
+    return shadow / float(pcfSamples);
 }
