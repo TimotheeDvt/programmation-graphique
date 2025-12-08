@@ -156,7 +156,7 @@ void Renderer::render(const FPSCamera& camera, const World& world, const Scene& 
     }
 
     // 2. Render Shadow Maps
-    dirShadowPass(camera, world, scene, meshCache);
+    dirShadowPass(camera, world, scene, meshCache, blockTextures);
     pointShadowPass(pointLights, world, scene, meshCache);
     spotShadowPass(spotLights, world, scene, meshCache);
 
@@ -184,7 +184,7 @@ void Renderer::renderScene(ShaderProgram& shader, const World& world, const Scen
 }
 
 void Renderer::dirShadowPass(const FPSCamera& camera, const World& world, const Scene& scene,
-                             const std::map<std::string, std::unique_ptr<Mesh>>& meshCache) {
+                             const std::map<std::string, std::unique_ptr<Mesh>>& meshCache, const Texture2D* blockTextures) {
     float dir_near_plane = 1.0f, dir_far_plane = 70.0f;
     glm::mat4 dirLightProjection = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, dir_near_plane, dir_far_plane);
     glm::vec3 centerPos = camera.getPosition();
@@ -198,7 +198,18 @@ void Renderer::dirShadowPass(const FPSCamera& camera, const World& world, const 
 
     m_depthShader->use();
     m_depthShader->setUniform("lightSpaceMatrix", m_dirLightSpaceMatrix);
+
+    const auto& pathToIndex = Chunk::m_pathToTextureIndex;
+    for (size_t i = 0; i < pathToIndex.size(); i++) {
+        blockTextures[i].bind(i);
+        m_depthShader->setUniformSampler(("diffuseMaps[" + std::to_string(i) + "]").c_str(), i);
+    }
+
     renderScene(*m_depthShader, world, scene, meshCache);
+
+    for (size_t i = 0; i < pathToIndex.size(); i++) {
+        blockTextures[i].unbind(i);
+    }
 
     glCullFace(GL_BACK);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

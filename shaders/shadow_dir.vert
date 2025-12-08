@@ -6,8 +6,10 @@ uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
 
 flat out int TexIndex;
+out vec2 TexCoord;
 
 void main() {
     TexIndex = int(aTexCoord.z);
+    TexCoord = aTexCoord.xy;
     gl_Position = lightSpaceMatrix * model * vec4(aPos, 1.0);
 }

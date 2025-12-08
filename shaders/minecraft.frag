@@ -204,7 +204,7 @@ float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     if (currentDepth - bias > closestDepth) {
         shadow = 0.0;
         if (TexIndex == 7)
-            shadow = 1.0; // Less shadow for leaves
+            shadow = 0.5; // Less shadow for leaves
     }
 
     return shadow;
