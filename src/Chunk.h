@@ -28,8 +28,11 @@ public:
 	glm::vec3 getWorldPosition() const { return glm::vec3(mChunkX * CHUNK_SIZE, 0, mChunkZ * CHUNK_SIZE); }
 
 	static std::map<BlockType, BlockTexturePaths> m_textureConfig;
+	static std::map<BlockType, BlockMaterial> m_materialConfig;
     static std::map<std::string, int> m_pathToTextureIndex;
     static int m_nextTextureIndex;
+
+	static BlockMaterial getMaterialForTextureIndex(int textureIndex);
 
 private:
 	int mChunkX, mChunkZ;

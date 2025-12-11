@@ -26,6 +26,12 @@ struct BlockTexturePaths {
     std::string special;
 };
 
+struct BlockMaterial {
+    glm::vec3 ambient = glm::vec3(1.0f);
+    glm::vec3 specular = glm::vec3(0.1f);
+    float shininess = 8.0f;
+};
+
 struct CubeVertex {
 	glm::vec3 position;
 	glm::vec3 normal;

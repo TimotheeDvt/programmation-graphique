@@ -5,9 +5,12 @@
 #define MAX_POINT_LIGHTS 32
 #define MAX_SPOT_LIGHTS 8
 
-struct Material {
-        vec3 ambient;
+struct TextureArray {
         sampler2D diffuseMaps[MAX_BLOCK_TEXTURES];
+};
+
+struct BlockMaterialUniform {
+        vec3 ambient;
         vec3 specular;
         float shininess;
 };
@@ -66,14 +69,15 @@ out vec4 FragColor;
 uniform DirectionalLight dirLight;
 uniform int numPointLights;
 uniform int numSpotLights;
-uniform Material material;
+uniform TextureArray blockTextures;
+uniform BlockMaterialUniform blockMaterials[MAX_BLOCK_TEXTURES];
 uniform vec3 viewPos;
 
 
 // Function Prototypes
-vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec3 texColor);
-vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, samplerCube shadowMap, float farPlane);
-vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, sampler2D shadowMap, mat4 lightSpaceMatrix);
+vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec3 texColor, BlockMaterialUniform material);
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, samplerCube shadowMap, float farPlane, BlockMaterialUniform material);
+vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, sampler2D shadowMap, mat4 lightSpaceMatrix, BlockMaterialUniform material);
 float DirShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir);
 float PointShadowCalculation(vec3 fragPos, vec3 lightPos, samplerCube shadowMap, float farPlane);
 float SpotShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir, sampler2D shadowMap);
@@ -84,9 +88,11 @@ void main() {
         vec3 viewDir = normalize(viewPos - FragPos);
         vec2 uv = TexCoord;
 
+        BlockMaterialUniform currentMaterial = blockMaterials[TexIndex];
+
         vec4 texData;
         if (TexIndex >= 0 && TexIndex < MAX_BLOCK_TEXTURES) {
-                texData = texture(material.diffuseMaps[TexIndex], uv);
+                texData = texture(blockTextures.diffuseMaps[TexIndex], uv);
         } else {
                 texData = vec4(1.0f, 0.0f, 1.0f, 1.0f);
         }
@@ -97,21 +103,21 @@ void main() {
 
         vec3 texColor = texData.rgb;
         // Start with only ambient from DirLight for global lighting
-        vec3 result = dirLight.ambient * material.ambient * texColor;
-        result += calcDirectionalLight(dirLight, norm, viewDir, texColor);
+        vec3 result = dirLight.ambient * currentMaterial.ambient * texColor;
+        result += calcDirectionalLight(dirLight, norm, viewDir, texColor, currentMaterial);
 
         for (int i = 0; i < numPointLights && i < MAX_POINT_LIGHTS; i++) {
-                result += calcPointLight(pointLights[i], norm, FragPos, viewDir, texColor, pointShadowMap, pointFarPlane);
+                result += calcPointLight(pointLights[i], norm, FragPos, viewDir, texColor, pointShadowMap, pointFarPlane, currentMaterial);
         }
 
         for (int i = 0; i < numSpotLights && i < MAX_SPOT_LIGHTS; i++) {
-                result += calcSpotLight(spotLights[i], norm, FragPos, viewDir, texColor, spotShadowMaps[i], spotLightSpaceMatrices[i]);
+                result += calcSpotLight(spotLights[i], norm, FragPos, viewDir, texColor, spotShadowMaps[i], spotLightSpaceMatrices[i], currentMaterial);
         }
 
         FragColor = vec4(result, 1.0);
 }
 
-vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec3 texColor) {
+vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec3 texColor, BlockMaterialUniform material) {
         vec3 lightDir = normalize(-light.direction);
         vec3 ambient = vec3(0.0);
 
@@ -131,7 +137,7 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir, vec
         return ambient + diffuse + specular;
 }
 
-vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, samplerCube shadowMap, float farPlane) {
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, samplerCube shadowMap, float farPlane, BlockMaterialUniform material) {
         vec3 lightDir = normalize(light.position - fragPos);
         float distance = length(light.position - fragPos);
 
@@ -156,7 +162,7 @@ vec3 calcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir, v
         return ambient + diffuse + specular;
 }
 
-vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, sampler2D shadowMap, mat4 lightSpaceMatrix) {
+vec3 calcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir, vec3 texColor, sampler2D shadowMap, mat4 lightSpaceMatrix, BlockMaterialUniform material) {
         vec3 lightDir = normalize(light.position - fragPos);
         vec3 spotDir = normalize(normalize(light.direction));
         float distance = length(light.position - fragPos);

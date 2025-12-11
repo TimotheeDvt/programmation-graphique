@@ -405,15 +405,22 @@ void Renderer::mainRenderPass(const FPSCamera& camera, const World& world, const
     }
 
     // Material
-    m_minecraftShader->setUniform("material.ambient", glm::vec3(1.0f));
-    m_minecraftShader->setUniform("material.specular", glm::vec3(0.1f));
-    m_minecraftShader->setUniform("material.shininess", 8.0f);
+    const auto& pathToIndex = Chunk::m_pathToTextureIndex;
+    for (const auto& pair : pathToIndex) {
+        int index = pair.second;
+        // Fetch the correct material configuration using the texture index
+        BlockMaterial mat = Chunk::getMaterialForTextureIndex(index);
+
+        std::string base = "blockMaterials[" + std::to_string(index) + "]";
+        m_minecraftShader->setUniform((base + ".ambient").c_str(), mat.ambient);
+        m_minecraftShader->setUniform((base + ".specular").c_str(), mat.specular);
+        m_minecraftShader->setUniform((base + ".shininess").c_str(), mat.shininess);
+    }
 
     // Bind block textures
-    const auto& pathToIndex = Chunk::m_pathToTextureIndex;
     for (size_t i = 0; i < pathToIndex.size(); i++) {
         blockTextures[i].bind(i);
-        m_minecraftShader->setUniformSampler(("material.diffuseMaps[" + std::to_string(i) + "]").c_str(), i);
+        m_minecraftShader->setUniformSampler(("blockTextures.diffuseMaps[" + std::to_string(i) + "]").c_str(), i);
     }
 
     // Draw world

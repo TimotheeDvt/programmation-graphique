@@ -4,6 +4,7 @@
 #include <random>
 
 std::map<BlockType, BlockTexturePaths> Chunk::m_textureConfig;
+std::map<BlockType, BlockMaterial> Chunk::m_materialConfig;
 std::map<std::string, int> Chunk::m_pathToTextureIndex;
 int Chunk::m_nextTextureIndex = 0;
 
@@ -223,6 +224,19 @@ void Chunk::initializeTextureConfig() {
                 if (!pair.second.side.empty()) getIndex(pair.second.side);
                 if (!pair.second.special.empty()) getIndex(pair.second.special);
         }
+
+        BlockMaterial defaultMat = {glm::vec3(1.0f), glm::vec3(0.1f), 8.0f};
+        BlockMaterial shinyMat = {glm::vec3(1.0f), glm::vec3(0.8f), 64.0f}; // e.g. for Glass
+        BlockMaterial matteMat = {glm::vec3(1.0f), glm::vec3(0.05f), 4.0f}; // e.g. for Leaves
+
+        m_materialConfig[BlockType::GRASS] = defaultMat;
+        m_materialConfig[BlockType::DIRT] = defaultMat;
+        m_materialConfig[BlockType::STONE] = defaultMat;
+        m_materialConfig[BlockType::WOOD] = shinyMat;
+        m_materialConfig[BlockType::REDSTONE] = defaultMat; // Redstone light is handled by point lights
+        m_materialConfig[BlockType::LEAVES] = matteMat;
+        m_materialConfig[BlockType::TORCH] = defaultMat;
+        m_materialConfig[BlockType::GLASS] = shinyMat;
 }
 
 void Chunk::setBlock(int x, int y, int z, BlockType type) {
@@ -495,4 +509,35 @@ void Chunk::draw() {
         glBindVertexArray(mVAO);
         glDrawArrays(GL_TRIANGLES, 0, mVertexCount);
         glBindVertexArray(0);
+}
+
+BlockMaterial Chunk::getMaterialForTextureIndex(int textureIndex) {
+    // Find BlockType by reverse-lookup of the texture index
+    BlockType targetType = BlockType::AIR;
+    for (const auto& pair : m_textureConfig) {
+        BlockType type = pair.first;
+        const BlockTexturePaths& config = pair.second;
+
+        // Check all texture paths for this BlockType
+        if (!config.top.empty() && m_pathToTextureIndex.count(config.top) && m_pathToTextureIndex.at(config.top) == textureIndex) {
+            targetType = type; break;
+        }
+        if (!config.bottom.empty() && m_pathToTextureIndex.count(config.bottom) && m_pathToTextureIndex.at(config.bottom) == textureIndex) {
+            targetType = type; break;
+        }
+        if (!config.side.empty() && m_pathToTextureIndex.count(config.side) && m_pathToTextureIndex.at(config.side) == textureIndex) {
+            targetType = type; break;
+        }
+        if (!config.special.empty() && m_pathToTextureIndex.count(config.special) && m_pathToTextureIndex.at(config.special) == textureIndex) {
+            targetType = type; break;
+        }
+    }
+
+    // Return the configured material or a default one
+    if (m_materialConfig.count(targetType)) {
+        return m_materialConfig.at(targetType);
+    }
+
+    // Default (matches original global material)
+    return {glm::vec3(1.0f), glm::vec3(0.1f), 8.0f};
 }
