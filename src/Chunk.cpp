@@ -227,15 +227,15 @@ void Chunk::initializeTextureConfig() {
 
         BlockMaterial defaultMat = {glm::vec3(1.0f), glm::vec3(0.1f), 8.0f};
         BlockMaterial shinyMat = {glm::vec3(1.0f), glm::vec3(0.8f), 64.0f}; // e.g. for Glass
-        BlockMaterial matteMat = {glm::vec3(1.0f), glm::vec3(0.05f), 4.0f}; // e.g. for Leaves
+        BlockMaterial matteMat = {glm::vec3(1.0f), glm::vec3(0.05f), 0.0f}; // e.g. for Leaves
 
         m_materialConfig[BlockType::GRASS] = defaultMat;
         m_materialConfig[BlockType::DIRT] = defaultMat;
         m_materialConfig[BlockType::STONE] = defaultMat;
         m_materialConfig[BlockType::WOOD] = shinyMat;
-        m_materialConfig[BlockType::REDSTONE] = defaultMat; // Redstone light is handled by point lights
+        m_materialConfig[BlockType::REDSTONE] = shinyMat; // Redstone light is handled by point lights
         m_materialConfig[BlockType::LEAVES] = matteMat;
-        m_materialConfig[BlockType::TORCH] = defaultMat;
+        m_materialConfig[BlockType::TORCH] = shinyMat;
         m_materialConfig[BlockType::GLASS] = shinyMat;
 }
 
