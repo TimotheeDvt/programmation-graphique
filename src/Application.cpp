@@ -297,7 +297,9 @@ void Application::processInput(double deltaTime) {
 }
 
 void Application::update(double deltaTime) {
-    m_renderer->updateSun(deltaTime);
+    if (!m_isPaused) {
+        m_renderer->updateSun(deltaTime);
+    }
 
     if (!m_isFlying) {
         m_camera.applyPhysics(m_world, deltaTime);
@@ -422,6 +424,9 @@ void Application::onKey(GLFWwindow* window, int key, int scancode, int action, i
         case GLFW_KEY_F:
             app->m_isFlying = !app->m_isFlying;
             if (app->m_isFlying) app->m_camera.mVelocity.y = 0;
+            break;
+        case GLFW_KEY_P:
+            app->m_isPaused = !app->m_isPaused;
             break;
     }
 }

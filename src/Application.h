@@ -44,6 +44,7 @@ private:
     bool m_wireframe = false;
     bool m_debug = true;
     bool m_isFlying = false;
+    bool m_isPaused = false;
 
     std::vector<BlockType> m_selectableBlocks;
     int m_selectedBlockIndex = 0;
